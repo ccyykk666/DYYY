@@ -3658,7 +3658,7 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
     AWESettingItemModel *diagnosticsItem = [[%c(AWESettingItemModel) alloc] init];
     diagnosticsItem.identifier = @"DYYYDiagnostics";
     diagnosticsItem.title = @"诊断工具";
-    diagnosticsItem.subTitle = @"三指长按采集当前页面的视图树和运行时信息";
+    diagnosticsItem.subTitle = @"四指长按采集当前页面的视图树和运行时信息";
     diagnosticsItem.type = 0;
     diagnosticsItem.svgIconImageName = @"ic_gearsimplify_outlined_20";
     diagnosticsItem.cellType = 26;

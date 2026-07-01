@@ -108,7 +108,7 @@ typedef NS_ENUM(NSInteger, DYYYDiagnosticsReportsRow) {
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
     switch (section) {
         case DYYYDiagnosticsSectionCapture:
-            return @"建议开启三指长按，返回目标页面后用三根手指长按约 1 秒。采集完成后再回到这里分享最新报告。";
+            return @"建议开启四指长按，返回目标页面后用四根手指长按约 1 秒。采集完成后再回到这里分享最新报告。";
         case DYYYDiagnosticsSectionPrivacy:
             return @"默认不保存昵称、评论正文、输入内容或截图。诊断报告不会读取 Cookie、账号凭据和非 DYYY 的偏好值。";
         case DYYYDiagnosticsSectionReports:
@@ -140,7 +140,7 @@ typedef NS_ENUM(NSInteger, DYYYDiagnosticsReportsRow) {
 - (UITableViewCell *)captureCellForRow:(NSInteger)row {
     UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:nil];
     if (row == DYYYDiagnosticsCaptureRowGesture) {
-        cell.textLabel.text = @"启用三指长按采集";
+        cell.textLabel.text = @"启用四指长按采集";
         cell.detailTextLabel.text = @"在任意普通页面原地采集";
         UISwitch *toggle = [[UISwitch alloc] init];
         toggle.on = [DYYYDiagnosticsCollector captureGestureEnabled];
@@ -149,7 +149,7 @@ typedef NS_ENUM(NSInteger, DYYYDiagnosticsReportsRow) {
         cell.accessoryView = toggle;
         cell.selectionStyle = UITableViewCellSelectionStyleNone;
     } else if (row == DYYYDiagnosticsCaptureRowProfile) {
-        cell.textLabel.text = @"三指采集模式";
+        cell.textLabel.text = @"四指采集模式";
         UISegmentedControl *control = [[UISegmentedControl alloc] initWithItems:@[ @"通用", @"评论区专项" ]];
         control.selectedSegmentIndex = [DYYYDiagnosticsCollector captureGestureProfile];
         [control addTarget:self action:@selector(profileChanged:) forControlEvents:UIControlEventValueChanged];
@@ -161,7 +161,7 @@ typedef NS_ENUM(NSInteger, DYYYDiagnosticsReportsRow) {
         cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
     } else {
         cell.textLabel.text = @"立即采集当前界面（评论区专项）";
-        cell.detailTextLabel.text = @"若当前不是评论区，建议改用三指手势";
+        cell.detailTextLabel.text = @"若当前不是评论区，建议改用四指手势";
         cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
     }
     return cell;
@@ -247,7 +247,7 @@ typedef NS_ENUM(NSInteger, DYYYDiagnosticsReportsRow) {
     NSString *key = toggle.accessibilityIdentifier;
     if ([key isEqualToString:DYYYDiagnosticsGestureEnabledKey]) {
         [DYYYDiagnosticsCollector setCaptureGestureEnabled:toggle.on];
-        [DYYYUtils showToast:toggle.on ? @"三指长按诊断已启用" : @"三指长按诊断已关闭"];
+        [DYYYUtils showToast:toggle.on ? @"四指长按诊断已启用" : @"四指长按诊断已关闭"];
         return;
     }
     if (([key isEqualToString:DYYYDiagnosticsIncludeTextKey] || [key isEqualToString:DYYYDiagnosticsIncludeScreenshotKey]) && toggle.on) {

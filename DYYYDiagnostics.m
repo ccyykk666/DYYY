@@ -1,6 +1,7 @@
 #import "DYYYDiagnostics.h"
 
 #import <mach-o/dyld.h>
+#import <math.h>
 #import <objc/runtime.h>
 #import <sys/sysctl.h>
 
@@ -175,7 +176,7 @@ static char kDYYYDiagnosticsGestureAssociationKey;
     }
 
     UILongPressGestureRecognizer *gesture = [[UILongPressGestureRecognizer alloc] initWithTarget:[self sharedCollector] action:@selector(handleCaptureGesture:)];
-    gesture.numberOfTouchesRequired = 3;
+    gesture.numberOfTouchesRequired = 4;
     gesture.minimumPressDuration = 0.9;
     gesture.cancelsTouchesInView = NO;
     gesture.delaysTouchesBegan = NO;
@@ -1042,7 +1043,22 @@ static char kDYYYDiagnosticsGestureAssociationKey;
     NSURL *jsonURL = [directoryURL URLByAppendingPathComponent:[baseName stringByAppendingPathExtension:@"json"]];
     NSURL *textURL = [directoryURL URLByAppendingPathComponent:[baseName stringByAppendingPathExtension:@"txt"]];
 
-    NSData *jsonData = [NSJSONSerialization dataWithJSONObject:report options:NSJSONWritingPrettyPrinted | NSJSONWritingSortedKeys error:error];
+    NSData *jsonData = nil;
+    @try {
+        id safeReport = [self JSONSafeObject:report];
+        jsonData = [NSJSONSerialization dataWithJSONObject:safeReport options:NSJSONWritingPrettyPrinted | NSJSONWritingSortedKeys error:error];
+    } @catch (NSException *exception) {
+        if (error) {
+            *error = [NSError errorWithDomain:kDYYYDiagnosticsErrorDomain
+                                         code:2
+                                     userInfo:@{
+                                         NSLocalizedDescriptionKey : @"诊断报告序列化失败",
+                                         @"exceptionName" : exception.name ?: @"",
+                                         @"exceptionReason" : exception.reason ?: @"",
+                                     }];
+        }
+        return @[];
+    }
     if (!jsonData || ![jsonData writeToURL:jsonURL options:NSDataWritingAtomic error:error]) {
         return @[];
     }
@@ -1065,6 +1081,62 @@ static char kDYYYDiagnosticsGestureAssociationKey;
     }
     [[NSUserDefaults standardUserDefaults] setObject:baseName forKey:kDYYYDiagnosticsLatestBaseNameKey];
     return files;
+}
+
+- (id)JSONSafeObject:(id)object {
+    if (!object || object == [NSNull null]) {
+        return [NSNull null];
+    }
+    if ([object isKindOfClass:[NSString class]]) {
+        return object;
+    }
+    if ([object isKindOfClass:[NSNumber class]]) {
+        if (CFGetTypeID((__bridge CFTypeRef)object) == CFBooleanGetTypeID()) {
+            return object;
+        }
+        double value = [object doubleValue];
+        if (isnan(value)) {
+            return @"NaN";
+        }
+        if (isinf(value)) {
+            return value > 0 ? @"+Infinity" : @"-Infinity";
+        }
+        return object;
+    }
+    if ([object isKindOfClass:[NSArray class]]) {
+        NSMutableArray *result = [NSMutableArray arrayWithCapacity:[(NSArray *)object count]];
+        for (id value in (NSArray *)object) {
+            [result addObject:[self JSONSafeObject:value]];
+        }
+        return result;
+    }
+    if ([object isKindOfClass:[NSDictionary class]]) {
+        NSMutableDictionary *result = [NSMutableDictionary dictionaryWithCapacity:[(NSDictionary *)object count]];
+        [(NSDictionary *)object enumerateKeysAndObjectsUsingBlock:^(id key, id value, BOOL *stop) {
+          NSString *safeKey = [key isKindOfClass:[NSString class]] ? key : [key description];
+          result[safeKey ?: @"<unknown-key>"] = [self JSONSafeObject:value];
+        }];
+        return result;
+    }
+    if ([object isKindOfClass:[NSSet class]]) {
+        NSMutableArray *result = [NSMutableArray arrayWithCapacity:[(NSSet *)object count]];
+        for (id value in (NSSet *)object) {
+            [result addObject:[self JSONSafeObject:value]];
+        }
+        return result;
+    }
+    if ([object isKindOfClass:[NSURL class]]) {
+        return [(NSURL *)object absoluteString] ?: @"";
+    }
+    if ([object isKindOfClass:[NSDate class]]) {
+        NSISO8601DateFormatter *formatter = [[NSISO8601DateFormatter alloc] init];
+        formatter.formatOptions = NSISO8601DateFormatWithInternetDateTime | NSISO8601DateFormatWithFractionalSeconds;
+        return [formatter stringFromDate:object] ?: @"";
+    }
+    return @{
+        @"unsupportedType" : NSStringFromClass([object class]) ?: @"",
+        @"descriptionRedacted" : @YES,
+    };
 }
 
 - (NSString *)textSummaryForReport:(NSDictionary *)report {
