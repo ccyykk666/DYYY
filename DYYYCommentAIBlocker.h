@@ -18,6 +18,11 @@ NS_ASSUME_NONNULL_BEGIN
 + (void)markTabContentController:(UIViewController *)viewController;
 + (BOOL)isManagedTabContentController:(UIViewController *)viewController;
 
++ (void)recordTabConfiguration:(nullable id)configuration;
++ (void)recordTabItems:(nullable NSArray *)items;
++ (void)recordTabModel:(nullable id)model index:(NSInteger)index viewController:(nullable UIViewController *)viewController;
++ (NSDictionary *)diagnosticsSnapshot;
+
 @end
 
 NS_ASSUME_NONNULL_END

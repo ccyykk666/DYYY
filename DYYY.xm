@@ -895,60 +895,10 @@ static void DYYYHandleCurrentSpeedAwemeChanged(id aweme) {
 @property(nonatomic, weak) id playingPlayer;
 @end
 
-@interface MPNowPlayingInfoCenter : NSObject
-@property(nonatomic, copy) NSDictionary *nowPlayingInfo;
-+ (instancetype)defaultCenter;
-@end
-
-static BOOL dyyyClearingFeedNowPlayingSystemInfo = NO;
-static CFTimeInterval dyyyLastFeedNowPlayingSystemClearTime = 0.0;
-
-static void DYYYClearFeedNowPlayingSystemInfoThrottled(void) {
-    if (!DYYYGetBool(@"DYYYDisableFeedNowPlayingInfo") || dyyyClearingFeedNowPlayingSystemInfo) {
-        return;
-    }
-
-    CFTimeInterval currentTime = CFAbsoluteTimeGetCurrent();
-    if (currentTime - dyyyLastFeedNowPlayingSystemClearTime < 0.25) {
-        return;
-    }
-    dyyyLastFeedNowPlayingSystemClearTime = currentTime;
-
-    Class nowPlayingInfoCenterClass = NSClassFromString(@"MPNowPlayingInfoCenter");
-    if (!nowPlayingInfoCenterClass || ![nowPlayingInfoCenterClass respondsToSelector:@selector(defaultCenter)]) {
-        return;
-    }
-
-    id center = ((id (*)(Class, SEL))objc_msgSend)(nowPlayingInfoCenterClass, @selector(defaultCenter));
-    if (!center) {
-        return;
-    }
-
-    dyyyClearingFeedNowPlayingSystemInfo = YES;
-    @try {
-        if ([center respondsToSelector:@selector(setNowPlayingInfo:)]) {
-            ((void (*)(id, SEL, id))objc_msgSend)(center, @selector(setNowPlayingInfo:), nil);
-        }
-
-        SEL setPlaybackStateSelector = NSSelectorFromString(@"setPlaybackState:");
-        if ([center respondsToSelector:setPlaybackStateSelector]) {
-            ((void (*)(id, SEL, NSInteger))objc_msgSend)(center, setPlaybackStateSelector, 0);
-        }
-    } @catch (__unused NSException *exception) {
-    } @finally {
-        dyyyClearingFeedNowPlayingSystemInfo = NO;
-    }
-}
-
-static BOOL DYYYShouldBlockFeedNowPlayingSystemInfoWrite(void) {
-    return DYYYGetBool(@"DYYYDisableFeedNowPlayingInfo") && !dyyyClearingFeedNowPlayingSystemInfo;
-}
-
 %hook AWEAwemeBackgroundPlayModule
 
 - (id)nowPlayingInfo {
     if (DYYYGetBool(@"DYYYDisableFeedNowPlayingInfo")) {
-        DYYYClearFeedNowPlayingSystemInfoThrottled();
         return nil;
     }
 
@@ -957,7 +907,6 @@ static BOOL DYYYShouldBlockFeedNowPlayingSystemInfoWrite(void) {
 
 - (void)refreshNowPlayingInfoIfNeeded {
     if (DYYYGetBool(@"DYYYDisableFeedNowPlayingInfo")) {
-        DYYYClearFeedNowPlayingSystemInfoThrottled();
         return;
     }
 
@@ -966,7 +915,6 @@ static BOOL DYYYShouldBlockFeedNowPlayingSystemInfoWrite(void) {
 
 - (void)updateNowPlayingInfoPlayback {
     if (DYYYGetBool(@"DYYYDisableFeedNowPlayingInfo")) {
-        DYYYClearFeedNowPlayingSystemInfoThrottled();
         return;
     }
 
@@ -979,7 +927,6 @@ static BOOL DYYYShouldBlockFeedNowPlayingSystemInfoWrite(void) {
 
 - (id)nowPlayingInfo {
     if (DYYYGetBool(@"DYYYDisableFeedNowPlayingInfo")) {
-        DYYYClearFeedNowPlayingSystemInfoThrottled();
         return nil;
     }
 
@@ -988,7 +935,6 @@ static BOOL DYYYShouldBlockFeedNowPlayingSystemInfoWrite(void) {
 
 - (void)setNowPlayingInfo:(id)nowPlayingInfo {
     if (DYYYGetBool(@"DYYYDisableFeedNowPlayingInfo")) {
-        DYYYClearFeedNowPlayingSystemInfoThrottled();
         return;
     }
 
@@ -997,7 +943,6 @@ static BOOL DYYYShouldBlockFeedNowPlayingSystemInfoWrite(void) {
 
 - (void)resetNowPlayingInfo:(id)model {
     if (DYYYGetBool(@"DYYYDisableFeedNowPlayingInfo")) {
-        DYYYClearFeedNowPlayingSystemInfoThrottled();
         return;
     }
 
@@ -1006,7 +951,6 @@ static BOOL DYYYShouldBlockFeedNowPlayingSystemInfoWrite(void) {
 
 - (void)refreshNowPlayingInfo {
     if (DYYYGetBool(@"DYYYDisableFeedNowPlayingInfo")) {
-        DYYYClearFeedNowPlayingSystemInfoThrottled();
         return;
     }
 
@@ -1015,7 +959,6 @@ static BOOL DYYYShouldBlockFeedNowPlayingSystemInfoWrite(void) {
 
 - (void)refreshNowPlayingInfoIsForce:(BOOL)isForce {
     if (DYYYGetBool(@"DYYYDisableFeedNowPlayingInfo")) {
-        DYYYClearFeedNowPlayingSystemInfoThrottled();
         return;
     }
 
@@ -1024,7 +967,6 @@ static BOOL DYYYShouldBlockFeedNowPlayingSystemInfoWrite(void) {
 
 - (void)updateNowPlayingInfoPlayback {
     if (DYYYGetBool(@"DYYYDisableFeedNowPlayingInfo")) {
-        DYYYClearFeedNowPlayingSystemInfoThrottled();
         return;
     }
 
@@ -1033,12 +975,12 @@ static BOOL DYYYShouldBlockFeedNowPlayingSystemInfoWrite(void) {
 
 %end
 
-// 采用 HideNowPlayingInfo 的强屏蔽思路：播放中心写入时直接清空系统 Now Playing，不再走原实现。
+// 仅阻断抖音自身的 Now Playing 写入。不要向系统播放中心写入空信息，
+// 否则媒体会话仍然存活时会在灵动岛留下一个无内容的占位。
 %hook AWENowPlayingInfoCenter
 
 - (void)becomePlayingPlayer:(id)player {
     if (DYYYGetBool(@"DYYYDisableFeedNowPlayingInfo")) {
-        DYYYClearFeedNowPlayingSystemInfoThrottled();
         return;
     }
 
@@ -1047,7 +989,6 @@ static BOOL DYYYShouldBlockFeedNowPlayingSystemInfoWrite(void) {
 
 - (void)setNowPlayingInfo:(id)nowPlayingInfo {
     if (DYYYGetBool(@"DYYYDisableFeedNowPlayingInfo")) {
-        DYYYClearFeedNowPlayingSystemInfoThrottled();
         return;
     }
 
@@ -1056,30 +997,6 @@ static BOOL DYYYShouldBlockFeedNowPlayingSystemInfoWrite(void) {
 
 - (void)refreshNowPlayingInfo {
     if (DYYYGetBool(@"DYYYDisableFeedNowPlayingInfo")) {
-        DYYYClearFeedNowPlayingSystemInfoThrottled();
-        return;
-    }
-
-    %orig;
-}
-
-%end
-
-// 耳机或系统媒体会话可能绕过抖音播放中心，最终都要写入 MPNowPlayingInfoCenter。
-%hook MPNowPlayingInfoCenter
-
-- (void)setNowPlayingInfo:(NSDictionary *)nowPlayingInfo {
-    if (DYYYShouldBlockFeedNowPlayingSystemInfoWrite()) {
-        %orig(nil);
-        return;
-    }
-
-    %orig;
-}
-
-- (void)setPlaybackState:(NSInteger)playbackState {
-    if (DYYYShouldBlockFeedNowPlayingSystemInfoWrite()) {
-        %orig(0);
         return;
     }
 
@@ -11164,7 +11081,13 @@ static Class tabBarButtonClass = nil;
     return %orig(sectionController);
 }
 
+- (void)setupTabContentConfig:(id)configuration {
+    [DYYYCommentAIBlocker recordTabConfiguration:configuration];
+    %orig;
+}
+
 - (void)updateSegmentedControl:(id)segmentedControl itemsArray:(NSArray *)itemsArray {
+    [DYYYCommentAIBlocker recordTabItems:itemsArray];
     if ([DYYYCommentAIBlocker isEnabled]) {
         %orig(segmentedControl, [DYYYCommentAIBlocker filteredTabItems:itemsArray]);
         return;
@@ -11187,6 +11110,12 @@ static Class tabBarButtonClass = nil;
         return;
     }
     %orig;
+}
+
+- (UIViewController *)viewControllerForModel:(id)model index:(NSInteger)index {
+    UIViewController *viewController = %orig;
+    [DYYYCommentAIBlocker recordTabModel:model index:index viewController:viewController];
+    return viewController;
 }
 
 %end
@@ -13199,10 +13128,6 @@ static void findTargetViewInView(UIView *view) {
 }
 
 %ctor {
-    [[NSUserDefaults standardUserDefaults] registerDefaults:@{
-        @"DYYYDisableFeedNowPlayingInfo" : @YES
-    }];
-
     DYYYMigrateCombinedHDRModeIfNeeded();
 
     Class interactionBaseLabelClass = objc_getClass("AWECommentSwiftBizUI.CommentInteractionBaseLabel");

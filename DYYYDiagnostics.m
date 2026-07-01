@@ -7,6 +7,7 @@
 #import <sys/sysctl.h>
 
 #import "DYYYConstants.h"
+#import "DYYYCommentAIBlocker.h"
 #import "DYYYToast.h"
 #import "DYYYUtils.h"
 
@@ -313,6 +314,7 @@ static char kDYYYDiagnosticsGestureAssociationKey;
             report[@"dyyySettings"] = settings;
             report[@"ui"] = uiSnapshot;
             report[@"commentPanelProbe"] = commentPanelProbe;
+            report[@"commentAITabProbe"] = [DYYYCommentAIBlocker diagnosticsSnapshot];
             report[@"runtime"] = [DYYYDiagnosticsCollector includeRuntimeDetails] ? [self captureRuntimeForVisibleClassNames:visibleClassNames] : @{@"included" : @NO};
 
             NSError *writeError = nil;

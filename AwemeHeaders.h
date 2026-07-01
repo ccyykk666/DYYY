@@ -474,7 +474,9 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 - (NSUInteger)currentTab;
 - (CGFloat)heightForSegmentedControl;
 - (CGFloat)heightForSectionController:(id)sectionController;
+- (void)setupTabContentConfig:(id)configuration;
 - (void)updateSegmentedControl:(id)segmentedControl itemsArray:(NSArray *)itemsArray;
+- (UIViewController *)viewControllerForModel:(id)model index:(NSInteger)index;
 - (void)tabContainerSectionController:(id)sectionController didScroll:(id)scrollView;
 - (void)tabContainerSectionController:(id)sectionController
                  didSelectItemAtIndex:(NSInteger)index
