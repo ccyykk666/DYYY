@@ -19,6 +19,7 @@
 #import "AwemeHeaders.h"
 #import "CityManager.h"
 #import "DYYYBottomAlertView.h"
+#import "DYYYCommentAIBlocker.h"
 #import "DYYYManager.h"
 
 #import "AWMSafeDispatchTimer.h"
@@ -11119,6 +11120,136 @@ static Class tabBarButtonClass = nil;
 }
 %end
 
+%group DYYYCommentAIContainerGroup
+
+%hook DYYYCommentContainerInnerViewController
+
+- (void)viewDidLoad {
+    %orig;
+    if (![DYYYCommentAIBlocker isEnabled]) {
+        return;
+    }
+    __weak UIViewController *weakController = self;
+    dispatch_async(dispatch_get_main_queue(), ^{
+      [DYYYCommentAIBlocker applyToContainerController:weakController];
+    });
+}
+
+- (void)viewDidLayoutSubviews {
+    %orig;
+    [DYYYCommentAIBlocker applyToContainerController:self];
+}
+
+- (NSUInteger)currentTab {
+    if ([DYYYCommentAIBlocker isEnabled]) {
+        return 1;
+    }
+    return %orig;
+}
+
+- (CGFloat)heightForSegmentedControl {
+    if ([DYYYCommentAIBlocker isEnabled]) {
+        return 0.0;
+    }
+    return %orig;
+}
+
+- (CGFloat)heightForSectionController:(id)sectionController {
+    if ([DYYYCommentAIBlocker isEnabled]) {
+        NSString *className = NSStringFromClass([sectionController class]) ?: @"";
+        if ([className containsString:@"CommentPanelHeaderSectionController"]) {
+            return 40.0;
+        }
+    }
+    return %orig(sectionController);
+}
+
+- (void)updateSegmentedControl:(id)segmentedControl itemsArray:(NSArray *)itemsArray {
+    if ([DYYYCommentAIBlocker isEnabled]) {
+        %orig(segmentedControl, [DYYYCommentAIBlocker filteredTabItems:itemsArray]);
+        return;
+    }
+    %orig;
+}
+
+- (void)tabContainerSectionController:(id)sectionController didScroll:(id)scrollView {
+    if ([DYYYCommentAIBlocker isEnabled]) {
+        [DYYYCommentAIBlocker applyToContainerController:self];
+        return;
+    }
+    %orig;
+}
+
+- (void)tabContainerSectionController:(id)sectionController
+                 didSelectItemAtIndex:(NSInteger)index
+                   itemViewController:(UIViewController *)itemViewController
+                              isByTap:(BOOL)isByTap {
+    if ([DYYYCommentAIBlocker shouldBlockViewController:itemViewController]) {
+        [DYYYCommentAIBlocker applyToContainerController:self];
+        return;
+    }
+    %orig;
+}
+
+%end
+
+%end
+
+%group DYYYCommentAITabContentGroup
+
+%hook AWETabContentViewController
+
+- (NSArray *)sectionViewModels {
+    NSArray *models = %orig;
+    if ([DYYYCommentAIBlocker isManagedTabContentController:self]) {
+        return [DYYYCommentAIBlocker filteredTabItems:models];
+    }
+    return models;
+}
+
+- (void)reloadTabContentWithCount:(NSInteger)count {
+    if ([DYYYCommentAIBlocker isManagedTabContentController:self]) {
+        NSInteger filteredCount = MIN(count, 1);
+        %orig(filteredCount);
+        return;
+    }
+    %orig;
+}
+
+- (void)updateSelectedIndex:(NSInteger)index animated:(BOOL)animated {
+    if ([DYYYCommentAIBlocker isManagedTabContentController:self]) {
+        %orig(0, animated);
+        return;
+    }
+    %orig;
+}
+
+- (void)setCurrentIndex:(NSInteger)currentIndex {
+    if ([DYYYCommentAIBlocker isManagedTabContentController:self]) {
+        %orig(0);
+        return;
+    }
+    %orig;
+}
+
+- (NSInteger)currentIndex {
+    if ([DYYYCommentAIBlocker isManagedTabContentController:self]) {
+        return 0;
+    }
+    return %orig;
+}
+
+- (UIViewController *)itemViewControllerAtIndex:(NSInteger)index {
+    if ([DYYYCommentAIBlocker isManagedTabContentController:self] && index > 0) {
+        return nil;
+    }
+    return %orig(index);
+}
+
+%end
+
+%end
+
 %hook AWECommentInputBackgroundView
 - (void)layoutSubviews {
     %orig;
@@ -13152,6 +13283,16 @@ static void findTargetViewInView(UIView *view) {
         Class tipsVCClass = objc_getClass("AWECommentPanelListSwiftImpl.CommentBottomTipsContainerViewController");
         if (tipsVCClass) {
             %init(CommentBottomTipsVCGroup, AWECommentPanelListSwiftImpl_CommentBottomTipsContainerViewController = tipsVCClass);
+        }
+
+        Class commentContainerInnerClass = objc_getClass("AWECommentPanelContainerSwiftImpl.CommentContainerInnerViewController");
+        if (commentContainerInnerClass) {
+            %init(DYYYCommentAIContainerGroup, DYYYCommentContainerInnerViewController = commentContainerInnerClass);
+        }
+
+        Class tabContentViewControllerClass = objc_getClass("AWETabContentViewController");
+        if (tabContentViewControllerClass) {
+            %init(DYYYCommentAITabContentGroup);
         }
 
         NSNotificationCenter *center = [NSNotificationCenter defaultCenter];

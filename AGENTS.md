@@ -34,6 +34,8 @@
 - **诊断工具**
   - `DYYYDiagnostics.(h/m)`：脱敏采集环境、控制器、视图树、约束、响应链与相关运行时类。
   - `DYYYDiagnosticsViewController.(h/m)`：诊断手势、隐私选项、报告分享与清理入口。
+- **评论区适配**
+  - `DYYYCommentAIBlocker.(h/m)`：屏蔽评论区 AI 解析 Tab、锁定原生评论页并恢复单页标题布局。
 - **ABTest / 远程配置**
   - `DYYYABTestHook.(h/xm)`：抖音 ABTest 注入。
 
