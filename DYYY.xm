@@ -11124,44 +11124,11 @@ static Class tabBarButtonClass = nil;
 
 %hook DYYYCommentContainerInnerViewController
 
-- (void)viewDidLoad {
-    %orig;
-    if (![DYYYCommentAIBlocker isEnabled]) {
-        return;
-    }
-    __weak UIViewController *weakController = self;
-    dispatch_async(dispatch_get_main_queue(), ^{
-      [DYYYCommentAIBlocker applyToContainerController:weakController];
-    });
-}
-
-- (void)viewDidLayoutSubviews {
-    %orig;
-    [DYYYCommentAIBlocker applyToContainerController:self];
-}
-
 - (NSUInteger)currentTab {
     if ([DYYYCommentAIBlocker isEnabled]) {
         return 1;
     }
     return %orig;
-}
-
-- (CGFloat)heightForSegmentedControl {
-    if ([DYYYCommentAIBlocker isEnabled]) {
-        return 0.0;
-    }
-    return %orig;
-}
-
-- (CGFloat)heightForSectionController:(id)sectionController {
-    if ([DYYYCommentAIBlocker isEnabled]) {
-        NSString *className = NSStringFromClass([sectionController class]) ?: @"";
-        if ([className containsString:@"CommentPanelHeaderSectionController"]) {
-            return 40.0;
-        }
-    }
-    return %orig(sectionController);
 }
 
 - (void)setupTabContentConfig:(id)configuration {
@@ -11173,23 +11140,6 @@ static Class tabBarButtonClass = nil;
     [DYYYCommentAIBlocker recordTabItems:itemsArray];
     if ([DYYYCommentAIBlocker isEnabled]) {
         %orig(segmentedControl, [DYYYCommentAIBlocker filteredTabItems:itemsArray]);
-        return;
-    }
-    %orig;
-}
-
-- (void)tabContainerSectionController:(id)sectionController didScroll:(id)scrollView {
-    if ([DYYYCommentAIBlocker isEnabled]) {
-        return;
-    }
-    %orig;
-}
-
-- (void)tabContainerSectionController:(id)sectionController
-                 didSelectItemAtIndex:(NSInteger)index
-                   itemViewController:(UIViewController *)itemViewController
-                              isByTap:(BOOL)isByTap {
-    if ([DYYYCommentAIBlocker shouldBlockViewController:itemViewController]) {
         return;
     }
     %orig;
@@ -11252,13 +11202,6 @@ static Class tabBarButtonClass = nil;
         return 0;
     }
     return %orig;
-}
-
-- (void)addItemViewController:(UIViewController *)viewController atIndex:(NSInteger)index {
-    if ([DYYYCommentAIBlocker shouldManageTabContentController:self delegate:nil] && index > 0) {
-        return;
-    }
-    %orig;
 }
 
 %end

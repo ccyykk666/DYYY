@@ -6,14 +6,12 @@ NS_ASSUME_NONNULL_BEGIN
 /**
  * 评论区 AI 解析适配器。
  *
- * 负责将评论区双 Tab 收敛为原生评论单页，并阻止 AI 页被选择或创建。
+ * 在评论 Tab 数据源生成阶段移除 AI 解析模型，其余界面与布局保持抖音原生行为。
  */
 @interface DYYYCommentAIBlocker : NSObject
 
 + (BOOL)isEnabled;
 + (NSArray *)filteredTabItems:(NSArray *)items;
-+ (BOOL)shouldBlockViewController:(nullable UIViewController *)viewController;
-+ (void)applyToContainerController:(UIViewController *)containerController;
 
 + (void)markTabContentController:(UIViewController *)viewController;
 + (BOOL)isManagedTabContentController:(UIViewController *)viewController;

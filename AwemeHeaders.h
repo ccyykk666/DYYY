@@ -472,29 +472,17 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 // 评论区双 Tab / AI 解析容器（运行时类通过 Logos 动态映射）
 @interface DYYYCommentContainerInnerViewController : UIViewController
 - (NSUInteger)currentTab;
-- (CGFloat)heightForSegmentedControl;
-- (CGFloat)heightForSectionController:(id)sectionController;
 - (void)setupTabContentConfig:(id)configuration;
 - (void)updateSegmentedControl:(id)segmentedControl itemsArray:(NSArray *)itemsArray;
 - (UIViewController *)viewControllerForModel:(id)model index:(NSInteger)index;
-- (void)tabContainerSectionController:(id)sectionController didScroll:(id)scrollView;
-- (void)tabContainerSectionController:(id)sectionController
-                 didSelectItemAtIndex:(NSInteger)index
-                   itemViewController:(UIViewController *)itemViewController
-                              isByTap:(BOOL)isByTap;
 @end
 
 @interface AWETabContentViewController : UIViewController
 @property(nonatomic, assign) NSInteger currentIndex;
-@property(nonatomic, strong) id contentSectionViewModel;
-@property(nonatomic, strong) NSMutableDictionary *itemViewControllerDictionary;
 @property(nonatomic, weak) id delegate;
-@property(nonatomic, strong, readonly) UICollectionView *contentScrollView;
 - (NSArray *)sectionViewModels;
 - (void)reloadTabContentWithCount:(NSInteger)count;
 - (void)updateSelectedIndex:(NSInteger)index animated:(BOOL)animated;
-- (void)addItemViewController:(UIViewController *)viewController atIndex:(NSInteger)index;
-- (UIViewController *)itemViewControllerAtIndex:(NSInteger)index;
 @end
 
 @interface AWECommentInputViewController : UIViewController
