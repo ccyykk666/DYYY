@@ -3,6 +3,7 @@
 #import <mach-o/dyld.h>
 #import <math.h>
 #import <objc/runtime.h>
+#import <string.h>
 #import <sys/sysctl.h>
 
 #import "DYYYConstants.h"
@@ -299,6 +300,7 @@ static char kDYYYDiagnosticsGestureAssociationKey;
       NSData *screenshotData = nil;
       NSMutableSet<NSString *> *visibleClassNames = [NSMutableSet set];
       NSDictionary *uiSnapshot = [self captureUIStateForProfile:profile visibleClassNames:visibleClassNames screenshotData:&screenshotData];
+      NSDictionary *commentPanelProbe = [self captureCommentPanelProbe];
       NSDictionary *metadata = [self captureMetadataForProfile:profile];
       NSDictionary *settings = [self captureDYYYSettingsSummary];
       [DYYYUtils showToast:@"正在整理诊断数据…"];
@@ -306,10 +308,11 @@ static char kDYYYDiagnosticsGestureAssociationKey;
       dispatch_async(self.workQueue, ^{
         @autoreleasepool {
             NSMutableDictionary *report = [NSMutableDictionary dictionary];
-            report[@"schemaVersion"] = @1;
+            report[@"schemaVersion"] = @2;
             report[@"metadata"] = metadata;
             report[@"dyyySettings"] = settings;
             report[@"ui"] = uiSnapshot;
+            report[@"commentPanelProbe"] = commentPanelProbe;
             report[@"runtime"] = [DYYYDiagnosticsCollector includeRuntimeDetails] ? [self captureRuntimeForVisibleClassNames:visibleClassNames] : @{@"included" : @NO};
 
             NSError *writeError = nil;
@@ -439,7 +442,7 @@ static char kDYYYDiagnosticsGestureAssociationKey;
     NSArray<UIWindow *> *windows = [DYYYDiagnosticsCollector applicationWindows];
     NSMutableArray *windowNodes = [NSMutableArray array];
     NSMutableArray *candidates = [NSMutableArray array];
-    NSUInteger nodeCount = 0;
+    __block NSUInteger nodeCount = 0;
 
     [windows enumerateObjectsUsingBlock:^(UIWindow *window, NSUInteger index, BOOL *stop) {
       NSString *windowPath = [NSString stringWithFormat:@"window[%lu]", (unsigned long)index];
@@ -472,6 +475,377 @@ static char kDYYYDiagnosticsGestureAssociationKey;
         @"windows" : windowNodes,
         @"candidates" : candidates,
     };
+}
+
+#pragma mark - Comment panel probe
+
+- (NSDictionary *)captureCommentPanelProbe {
+    NSAssert([NSThread isMainThread], @"Comment panel probe must run on the main thread");
+    NSArray<UIViewController *> *controllers = [self allViewControllersForWindows:[DYYYDiagnosticsCollector applicationWindows]];
+    NSMutableArray *matches = [NSMutableArray array];
+    for (UIViewController *controller in controllers) {
+        NSString *className = NSStringFromClass([controller class]) ?: @"";
+        if ([className rangeOfString:@"CommentContainerInnerViewController" options:NSCaseInsensitiveSearch].location == NSNotFound) {
+            continue;
+        }
+
+        NSMutableArray *children = [NSMutableArray array];
+        for (UIViewController *child in controller.childViewControllers) {
+            [children addObject:[self controllerIdentityDictionary:child]];
+        }
+
+        NSMutableDictionary *knownState = [NSMutableDictionary dictionary];
+        for (NSString *key in @[ @"collectionView", @"sectionController", @"headerSectionController", @"iesSegmentedControl", @"businessServiceContainerVC" ]) {
+            knownState[key] = [self safelyReadValueForKey:key fromObject:controller];
+        }
+
+        [matches addObject:@{
+            @"controller" : [self controllerIdentityDictionary:controller],
+            @"children" : children,
+            @"sectionControllerClassArray" : [self safelyInvokeNoArgumentSelector:@"sectionControllerClassArray" onObject:controller],
+            @"currentTab" : [self safelyInvokeNoArgumentSelector:@"currentTab" onObject:controller],
+            @"knownState" : knownState,
+            @"relevantViews" : controller.isViewLoaded ? [self commentPanelViewSummariesUnderView:controller.view] : @[],
+        }];
+    }
+
+    return @{
+        @"included" : @YES,
+        @"found" : @(matches.count > 0),
+        @"matchingControllerCount" : @(matches.count),
+        @"controllers" : matches,
+        @"priorityRuntimeClassNames" : [self commentPanelPriorityRuntimeClassNames],
+    };
+}
+
+- (NSArray<UIViewController *> *)allViewControllersForWindows:(NSArray<UIWindow *> *)windows {
+    NSMutableArray<UIViewController *> *controllers = [NSMutableArray array];
+    NSHashTable<UIViewController *> *visited = [NSHashTable weakObjectsHashTable];
+    for (UIWindow *window in windows) {
+        [self appendViewController:window.rootViewController toArray:controllers visited:visited];
+    }
+    return controllers;
+}
+
+- (void)appendViewController:(UIViewController *)controller
+                     toArray:(NSMutableArray<UIViewController *> *)controllers
+                     visited:(NSHashTable<UIViewController *> *)visited {
+    if (!controller || [visited containsObject:controller]) {
+        return;
+    }
+    [visited addObject:controller];
+    [controllers addObject:controller];
+    for (UIViewController *child in controller.childViewControllers) {
+        [self appendViewController:child toArray:controllers visited:visited];
+    }
+    [self appendViewController:controller.presentedViewController toArray:controllers visited:visited];
+}
+
+- (NSDictionary *)controllerIdentityDictionary:(UIViewController *)controller {
+    return @{
+        @"class" : NSStringFromClass([controller class]) ?: @"",
+        @"address" : [NSString stringWithFormat:@"%p", controller],
+        @"parentClass" : controller.parentViewController ? NSStringFromClass([controller.parentViewController class]) : @"",
+        @"viewLoaded" : @(controller.isViewLoaded),
+        @"viewVisible" : @(controller.viewIfLoaded.window != nil),
+    };
+}
+
+- (NSDictionary *)safelyReadValueForKey:(NSString *)key fromObject:(id)object {
+    @try {
+        id value = [object valueForKey:key];
+        return @{
+            @"success" : @YES,
+            @"value" : [self diagnosticDescriptorForObject:value depth:0],
+        };
+    } @catch (NSException *exception) {
+        return @{
+            @"success" : @NO,
+            @"exceptionName" : exception.name ?: @"",
+            @"exceptionReason" : exception.reason ?: @"",
+        };
+    }
+}
+
+- (NSDictionary *)safelyInvokeNoArgumentSelector:(NSString *)selectorName onObject:(id)object {
+    SEL selector = NSSelectorFromString(selectorName);
+    if (!object || !selector || ![object respondsToSelector:selector]) {
+        return @{@"available" : @NO};
+    }
+
+    NSMethodSignature *signature = [object methodSignatureForSelector:selector];
+    if (!signature || signature.numberOfArguments != 2) {
+        return @{
+            @"available" : @YES,
+            @"invoked" : @NO,
+            @"reason" : @"unsupportedSignature",
+        };
+    }
+
+    @try {
+        NSInvocation *invocation = [NSInvocation invocationWithMethodSignature:signature];
+        invocation.target = object;
+        invocation.selector = selector;
+        [invocation invoke];
+
+        const char *returnType = signature.methodReturnType;
+        while (returnType && strchr("rnNoORV", returnType[0])) {
+            returnType++;
+        }
+        NSString *typeEncoding = returnType ? [NSString stringWithUTF8String:returnType] : @"";
+        id value = [NSNull null];
+        switch (returnType ? returnType[0] : '\0') {
+            case '@':
+            case '#': {
+                __unsafe_unretained id objectValue = nil;
+                [invocation getReturnValue:&objectValue];
+                value = [self diagnosticDescriptorForObject:objectValue depth:0];
+                break;
+            }
+            case 'B': {
+                BOOL boolValue = NO;
+                [invocation getReturnValue:&boolValue];
+                value = @(boolValue);
+                break;
+            }
+            case 'c': {
+                char number = 0;
+                [invocation getReturnValue:&number];
+                value = @(number);
+                break;
+            }
+            case 'C': {
+                unsigned char number = 0;
+                [invocation getReturnValue:&number];
+                value = @(number);
+                break;
+            }
+            case 's': {
+                short number = 0;
+                [invocation getReturnValue:&number];
+                value = @(number);
+                break;
+            }
+            case 'S': {
+                unsigned short number = 0;
+                [invocation getReturnValue:&number];
+                value = @(number);
+                break;
+            }
+            case 'i': {
+                int number = 0;
+                [invocation getReturnValue:&number];
+                value = @(number);
+                break;
+            }
+            case 'I': {
+                unsigned int number = 0;
+                [invocation getReturnValue:&number];
+                value = @(number);
+                break;
+            }
+            case 'l': {
+                long number = 0;
+                [invocation getReturnValue:&number];
+                value = @(number);
+                break;
+            }
+            case 'L': {
+                unsigned long number = 0;
+                [invocation getReturnValue:&number];
+                value = @(number);
+                break;
+            }
+            case 'q': {
+                long long number = 0;
+                [invocation getReturnValue:&number];
+                value = @(number);
+                break;
+            }
+            case 'Q': {
+                unsigned long long number = 0;
+                [invocation getReturnValue:&number];
+                value = @(number);
+                break;
+            }
+            case 'f': {
+                float number = 0;
+                [invocation getReturnValue:&number];
+                value = @(number);
+                break;
+            }
+            case 'd': {
+                double number = 0;
+                [invocation getReturnValue:&number];
+                value = @(number);
+                break;
+            }
+            case 'v':
+                value = [NSNull null];
+                break;
+            default:
+                value = @{@"unsupportedReturnType" : typeEncoding ?: @""};
+                break;
+        }
+        return @{
+            @"available" : @YES,
+            @"invoked" : @YES,
+            @"returnType" : typeEncoding ?: @"",
+            @"value" : value ?: [NSNull null],
+        };
+    } @catch (NSException *exception) {
+        return @{
+            @"available" : @YES,
+            @"invoked" : @NO,
+            @"exceptionName" : exception.name ?: @"",
+            @"exceptionReason" : exception.reason ?: @"",
+        };
+    }
+}
+
+- (id)diagnosticDescriptorForObject:(id)object depth:(NSUInteger)depth {
+    if (!object) {
+        return [NSNull null];
+    }
+    if (depth >= 6) {
+        return @{
+            @"class" : NSStringFromClass([object class]) ?: @"",
+            @"depthTruncated" : @YES,
+        };
+    }
+    if (object_isClass(object)) {
+        return @{
+            @"kind" : @"Class",
+            @"name" : NSStringFromClass(object) ?: @"",
+        };
+    }
+    if ([object isKindOfClass:[NSString class]]) {
+        return [self textDescriptor:object];
+    }
+    if ([object isKindOfClass:[NSNumber class]] || object == [NSNull null]) {
+        return object;
+    }
+    if ([object isKindOfClass:[NSArray class]]) {
+        NSMutableArray *values = [NSMutableArray array];
+        for (id value in object) {
+            [values addObject:[self diagnosticDescriptorForObject:value depth:depth + 1]];
+        }
+        return values;
+    }
+    if ([object isKindOfClass:[NSSet class]]) {
+        NSMutableArray *values = [NSMutableArray array];
+        for (id value in object) {
+            [values addObject:[self diagnosticDescriptorForObject:value depth:depth + 1]];
+        }
+        return values;
+    }
+    if ([object isKindOfClass:[UIViewController class]]) {
+        return [self controllerIdentityDictionary:object];
+    }
+    if ([object isKindOfClass:[UIView class]]) {
+        UIView *view = object;
+        return @{
+            @"class" : NSStringFromClass([view class]) ?: @"",
+            @"address" : [NSString stringWithFormat:@"%p", view],
+            @"frame" : [self rectDictionary:view.frame],
+            @"hidden" : @(view.hidden),
+            @"alpha" : @(view.alpha),
+        };
+    }
+    return @{
+        @"class" : NSStringFromClass([object class]) ?: @"",
+        @"address" : [NSString stringWithFormat:@"%p", object],
+        @"descriptionRedacted" : @YES,
+    };
+}
+
+- (NSArray *)commentPanelViewSummariesUnderView:(UIView *)rootView {
+    NSMutableArray *summaries = [NSMutableArray array];
+    NSMutableArray<UIView *> *pending = [NSMutableArray arrayWithObject:rootView];
+    NSArray<NSString *> *classTokens = @[
+        @"IESSegmentedControl",
+        @"IESSegmentedItemCell",
+        @"AWETabContainerSectionCell",
+        @"AWETabContentItemContainerCell",
+        @"CommentVCHeaderCloseBar",
+        @"CommentNewCell",
+        @"AWEDCFeedAICardCell",
+    ];
+    NSUInteger visitedCount = 0;
+    while (pending.count > 0 && visitedCount < kDYYYDiagnosticsMaximumViewNodes && summaries.count < 160) {
+        UIView *view = pending.lastObject;
+        [pending removeLastObject];
+        visitedCount++;
+        [pending addObjectsFromArray:view.subviews ?: @[]];
+
+        NSString *className = NSStringFromClass([view class]) ?: @"";
+        BOOL relevant = NO;
+        for (NSString *token in classTokens) {
+            if ([className rangeOfString:token options:NSCaseInsensitiveSearch].location != NSNotFound) {
+                relevant = YES;
+                break;
+            }
+        }
+        if (!relevant) {
+            continue;
+        }
+
+        NSArray *textEntries = @[];
+        if ([className rangeOfString:@"IESSegmentedItemCell"].location != NSNotFound ||
+            [className rangeOfString:@"CommentVCHeaderCloseBar"].location != NSNotFound) {
+            textEntries = [self structuralTextEntriesUnderView:view maximum:12];
+        }
+        [summaries addObject:@{
+            @"class" : className,
+            @"address" : [NSString stringWithFormat:@"%p", view],
+            @"frame" : [self rectDictionary:view.frame],
+            @"hidden" : @(view.hidden),
+            @"alpha" : @(view.alpha),
+            @"textEntries" : textEntries,
+            @"responderChain" : [self responderChainForResponder:view],
+        }];
+    }
+    return summaries;
+}
+
+- (NSArray *)structuralTextEntriesUnderView:(UIView *)rootView maximum:(NSUInteger)maximum {
+    NSMutableArray *entries = [NSMutableArray array];
+    NSMutableArray<UIView *> *pending = [NSMutableArray arrayWithObject:rootView];
+    while (pending.count > 0 && entries.count < maximum) {
+        UIView *view = pending.lastObject;
+        [pending removeLastObject];
+        [pending addObjectsFromArray:view.subviews ?: @[]];
+        NSArray *viewEntries = [self textEntriesForView:view];
+        if (viewEntries.count > 0) {
+            [entries addObjectsFromArray:[self sanitizedTextEntries:viewEntries]];
+        }
+    }
+    if (entries.count > maximum) {
+        return [entries subarrayWithRange:NSMakeRange(0, maximum)];
+    }
+    return entries;
+}
+
+- (NSArray<NSString *> *)commentPanelPriorityRuntimeClassNames {
+    return @[
+        @"AWECommentPanelContainerSwiftImpl.CommentContainerInnerViewController",
+        @"AWECommentContainerViewController",
+        @"AWETabContentViewController",
+        @"AWECommentPanelListSwiftImpl.CommentViewController",
+        @"AWEFeedDoubleColumnCommentAIParseViewController",
+        @"AWESearchCommentAIParseManager",
+        @"AWESearchCommentAIParseUtils",
+        @"AWESearchCommentAIParseContext",
+        @"AWESearchCommentAIParseRequestContext",
+        @"AWESearchCommentAIParseStatusContext",
+        @"AWECommentPanelTabSwiftImpl.CommentTabComponentAbility",
+        @"IESSegmentedControl",
+        @"IESSegmentedItemCell",
+        @"AWETabContainerSectionCell",
+        @"AWETabContentItemContainerCell",
+        @"AWEListKitTabContentCollectionView",
+        @"AWECommentPanelContainerSwiftImpl.CommentVCHeaderCloseBar",
+    ];
 }
 
 - (NSDictionary *)viewNodeForView:(UIView *)view
@@ -853,6 +1227,15 @@ static char kDYYYDiagnosticsGestureAssociationKey;
     [candidateNames sortUsingSelector:@selector(localizedCaseInsensitiveCompare:)];
 
     NSMutableOrderedSet<NSString *> *detailNames = [NSMutableOrderedSet orderedSet];
+    NSMutableArray<NSString *> *missingPriorityNames = [NSMutableArray array];
+    for (NSString *name in [self commentPanelPriorityRuntimeClassNames]) {
+        Class cls = visibleClasses[name] ?: candidateClasses[name] ?: NSClassFromString(name);
+        if (cls) {
+            [detailNames addObject:name];
+        } else {
+            [missingPriorityNames addObject:name];
+        }
+    }
     for (NSString *name in [[visibleClasses allKeys] sortedArrayUsingSelector:@selector(localizedCaseInsensitiveCompare:)]) {
         if ([self isProjectRuntimeClassName:name] || [self isRuntimeCandidateClassName:name]) {
             [detailNames addObject:name];
@@ -886,6 +1269,8 @@ static char kDYYYDiagnosticsGestureAssociationKey;
         @"candidateNamesTruncated" : @(candidateNames.count >= kDYYYDiagnosticsMaximumRuntimeNames),
         @"classDetails" : details,
         @"detailsTruncated" : @(detailNames.count >= kDYYYDiagnosticsMaximumRuntimeDetails),
+        @"priorityClassNames" : [self commentPanelPriorityRuntimeClassNames],
+        @"missingPriorityClassNames" : missingPriorityNames,
         @"loadedImages" : [self loadedImageNames],
     };
 }

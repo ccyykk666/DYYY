@@ -42,7 +42,7 @@ typedef void (^DYYYDiagnosticsCompletion)(NSArray<NSURL *> *_Nullable fileURLs, 
 + (void)setIncludeRuntimeDetails:(BOOL)enabled;
 
 /**
- * 给普通应用窗口安装或移除三指长按诊断手势。可重复调用。
+ * 给普通应用窗口安装或移除四指长按诊断手势。可重复调用。
  */
 + (void)syncCaptureGestureForWindow:(UIWindow *)window;
 + (void)syncCaptureGestureForAllWindows;
