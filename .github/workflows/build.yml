@@ -65,7 +65,9 @@ jobs:
   build:
     needs: changes
     if: needs.changes.outputs.should_build == 'true'
-    runs-on: macos-latest
+    # 固定到与 2.2-9 官方发布包一致的 macOS 15 / iOS 18 SDK。
+    # macos-latest 会在 macOS 15 与 26 之间漂移，导致同一源码产物行为不一致。
+    runs-on: macos-15
 
     steps:
       - uses: actions/checkout@v6
