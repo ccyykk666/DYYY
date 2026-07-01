@@ -12457,7 +12457,8 @@ static Class TagViewClass = nil;
         if (shouldShiftUp) {
             ty -= targetHeight;
         }
-        targetTransform = CGAffineTransformMakeTranslation(0, -20);
+        // 默认配置下保持原生布局，避免嵌套直播栈重复叠加固定上移。
+        targetTransform = CGAffineTransformMake(currentScale, 0, 0, currentScale, tx, ty);
 
         if (!CGAffineTransformEqualToTransform(self.transform, targetTransform)) {
             self.transform = targetTransform;
