@@ -2,10 +2,16 @@
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
 #import "DYYYConstants.h"
+#import "DYYYDiagnosticsViewController.h"
 #import "DYYYFloatClearButton.h"
 #import "DYYYFloatSpeedButton.h"
 
-typedef NS_ENUM(NSInteger, DYYYSettingItemType) { DYYYSettingItemTypeSwitch, DYYYSettingItemTypeTextField, DYYYSettingItemTypePicker };
+typedef NS_ENUM(NSInteger, DYYYSettingItemType) {
+    DYYYSettingItemTypeSwitch,
+    DYYYSettingItemTypeTextField,
+    DYYYSettingItemTypePicker,
+    DYYYSettingItemTypeAction,
+};
 
 @interface DYYYSettingItem : NSObject
 
@@ -378,12 +384,15 @@ typedef NS_ENUM(NSInteger, DYYYSettingItemType) { DYYYSettingItemTypeSwitch, DYY
             [DYYYSettingItem itemWithTitle:@"清屏隐藏滑条" key:@"DYYYHideSlider" type:DYYYSettingItemTypeSwitch],
             [DYYYSettingItem itemWithTitle:@"清屏隐藏底栏" key:@"DYYYHideTabBar" type:DYYYSettingItemTypeSwitch],
             [DYYYSettingItem itemWithTitle:@"清屏隐藏倍速按钮" key:@"DYYYHideSpeed" type:DYYYSettingItemTypeSwitch]
+        ],
+        @[
+            [DYYYSettingItem itemWithTitle:@"打开诊断工具" key:@"DYYYDiagnostics" type:DYYYSettingItemTypeAction]
         ]
     ];
 }
 
 - (void)setupSectionTitles {
-    self.sectionTitles = [@[ @"基本设置", @"界面设置", @"隐藏设置", @"顶栏移除", @"隐藏面板", @"面板设置", @"功能设置", @"悬浮按钮" ] mutableCopy];
+    self.sectionTitles = [@[ @"基本设置", @"界面设置", @"隐藏设置", @"顶栏移除", @"隐藏面板", @"面板设置", @"功能设置", @"悬浮按钮", @"诊断工具" ] mutableCopy];
 }
 
 - (void)setupFooterLabel {
@@ -548,6 +557,8 @@ typedef NS_ENUM(NSInteger, DYYYSettingItemType) { DYYYSettingItemTypeSwitch, DYY
             return @"功能设置";
         case 7:
             return @"悬浮按钮";
+        case 8:
+            return @"诊断工具";
         default:
             return @"";
     }
@@ -617,6 +628,8 @@ typedef NS_ENUM(NSInteger, DYYYSettingItemType) { DYYYSettingItemTypeSwitch, DYY
     cell.backgroundColor = [UIColor colorWithWhite:1 alpha:0.1];
 
     cell.backgroundView = nil;
+    cell.accessoryType = UITableViewCellAccessoryNone;
+    cell.accessoryView = nil;
 
     if (indexPath.row == [self.settingSections[indexPath.section] count] - 1) {
         cell.layer.cornerRadius = 10;
@@ -672,6 +685,9 @@ typedef NS_ENUM(NSInteger, DYYYSettingItemType) { DYYYSettingItemTypeSwitch, DYY
         ]];
 
         cell.accessoryView = containerView;
+    } else if (item.type == DYYYSettingItemTypeAction) {
+        cell.accessoryView = nil;
+        cell.accessoryType = UITableViewCellAccessoryDisclosureIndicator;
     }
 
     return cell;
@@ -688,6 +704,15 @@ typedef NS_ENUM(NSInteger, DYYYSettingItemType) { DYYYSettingItemTypeSwitch, DYY
     DYYYSettingItem *item = self.settingSections[indexPath.section][indexPath.row];
     if (item.type == DYYYSettingItemTypePicker) {
         [self showUniversalPickerForIndexPath:indexPath];
+    } else if (item.type == DYYYSettingItemTypeAction && [item.key isEqualToString:@"DYYYDiagnostics"]) {
+        DYYYDiagnosticsViewController *diagnosticsVC = [[DYYYDiagnosticsViewController alloc] init];
+        if (self.navigationController) {
+            [self.navigationController pushViewController:diagnosticsVC animated:YES];
+        } else {
+            UINavigationController *navigationController = [[UINavigationController alloc] initWithRootViewController:diagnosticsVC];
+            navigationController.modalPresentationStyle = UIModalPresentationPageSheet;
+            [self presentViewController:navigationController animated:YES completion:nil];
+        }
     }
     [tableView deselectRowAtIndexPath:indexPath animated:YES];
 }

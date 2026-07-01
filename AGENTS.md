@@ -31,6 +31,9 @@
 - **辅助代理**
   - `DYYYImagePickerDelegate.(h/m)`、`DYYYBackupPickerDelegate.(h/m)`：统一封装系统 Picker 逻辑。
   - `DYYYCustomInputView.(h/m)`：文本输入。
+- **诊断工具**
+  - `DYYYDiagnostics.(h/m)`：脱敏采集环境、控制器、视图树、约束、响应链与相关运行时类。
+  - `DYYYDiagnosticsViewController.(h/m)`：诊断手势、隐私选项、报告分享与清理入口。
 - **ABTest / 远程配置**
   - `DYYYABTestHook.(h/xm)`：抖音 ABTest 注入。
 

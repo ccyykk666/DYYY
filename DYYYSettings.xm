@@ -16,6 +16,7 @@
 #import "DYYYOptionsSelectionView.h"
 
 #import "DYYYConstants.h"
+#import "DYYYDiagnosticsViewController.h"
 #import "DYYYFloatClearButton.h"
 #import "DYYYFloatSpeedButton.h"
 #import "DYYYSettingsHelper.h"
@@ -3653,6 +3654,30 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
     };
 
     [mainItems addObject:enhanceSettingItem];
+
+    AWESettingItemModel *diagnosticsItem = [[%c(AWESettingItemModel) alloc] init];
+    diagnosticsItem.identifier = @"DYYYDiagnostics";
+    diagnosticsItem.title = @"诊断工具";
+    diagnosticsItem.subTitle = @"三指长按采集当前页面的视图树和运行时信息";
+    diagnosticsItem.type = 0;
+    diagnosticsItem.svgIconImageName = @"ic_gearsimplify_outlined_20";
+    diagnosticsItem.cellType = 26;
+    diagnosticsItem.colorStyle = 0;
+    diagnosticsItem.isEnable = YES;
+    diagnosticsItem.cellTappedBlock = ^{
+      if (DYYYBuildingSettingsSearchIndex) {
+          return;
+      }
+      DYYYDiagnosticsViewController *diagnosticsVC = [[DYYYDiagnosticsViewController alloc] init];
+      if (rootVC.navigationController) {
+          [rootVC.navigationController pushViewController:diagnosticsVC animated:YES];
+      } else {
+          UINavigationController *navigationController = [[UINavigationController alloc] initWithRootViewController:diagnosticsVC];
+          navigationController.modalPresentationStyle = UIModalPresentationPageSheet;
+          [rootVC presentViewController:navigationController animated:YES completion:nil];
+      }
+    };
+    [mainItems addObject:diagnosticsItem];
 
     // 创建悬浮按钮设置分类项
     AWESettingItemModel *floatButtonSettingItem = [[%c(AWESettingItemModel) alloc] init];

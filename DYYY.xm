@@ -23,6 +23,7 @@
 
 #import "AWMSafeDispatchTimer.h"
 #import "DYYYConstants.h"
+#import "DYYYDiagnostics.h"
 #import "DYYYFloatClearButton.h"
 #import "DYYYFloatSpeedButton.h"
 #import "DYYYSettingViewController.h"
@@ -3293,6 +3294,7 @@ static void DYYYDisableAVPlayerItemHDRMetadata(AVPlayerItem *item) {
         UILongPressGestureRecognizer *doubleFingerLongPressGesture = [[UILongPressGestureRecognizer alloc] initWithTarget:self action:@selector(handleDoubleFingerLongPressGesture:)];
         doubleFingerLongPressGesture.numberOfTouchesRequired = 2;
         [window addGestureRecognizer:doubleFingerLongPressGesture];
+        [DYYYDiagnosticsCollector syncCaptureGestureForWindow:window];
     }
     return window;
 }
@@ -3356,6 +3358,7 @@ static void DYYYDisableAVPlayerItemHDRMetadata(AVPlayerItem *item) {
 
 - (void)makeKeyAndVisible {
     %orig;
+    [DYYYDiagnosticsCollector syncCaptureGestureForWindow:self];
 
     if (!isFloatSpeedButtonEnabled)
         return;
