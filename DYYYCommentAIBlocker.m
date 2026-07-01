@@ -6,6 +6,7 @@
 
 static char kDYYYManagedCommentTabControllerKey;
 static char kDYYYCommentAIBlockerLayoutAppliedKey;
+static char kDYYYCommentAIBlockerApplyingKey;
 
 @implementation DYYYCommentAIBlocker
 
@@ -62,78 +63,102 @@ static char kDYYYCommentAIBlockerLayoutAppliedKey;
     if (!rootView) {
         return;
     }
+    if ([objc_getAssociatedObject(containerController, &kDYYYCommentAIBlockerApplyingKey) boolValue]) {
+        return;
+    }
+    objc_setAssociatedObject(containerController, &kDYYYCommentAIBlockerApplyingKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 
-    BOOL firstApplication = ![objc_getAssociatedObject(containerController, &kDYYYCommentAIBlockerLayoutAppliedKey) boolValue];
-    objc_setAssociatedObject(containerController, &kDYYYCommentAIBlockerLayoutAppliedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    @try {
+        BOOL firstApplication = ![objc_getAssociatedObject(containerController, &kDYYYCommentAIBlockerLayoutAppliedKey) boolValue];
+        objc_setAssociatedObject(containerController, &kDYYYCommentAIBlockerLayoutAppliedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 
-    NSMutableArray<UIView *> *pendingViews = [NSMutableArray arrayWithObject:rootView];
-    NSMutableOrderedSet<AWETabContentViewController *> *tabControllers = [NSMutableOrderedSet orderedSet];
-    UICollectionView *outerCollectionView = nil;
+        NSMutableArray<UIView *> *pendingViews = [NSMutableArray arrayWithObject:rootView];
+        NSMutableOrderedSet<AWETabContentViewController *> *tabControllers = [NSMutableOrderedSet orderedSet];
+        UICollectionView *outerCollectionView = nil;
 
-    while (pendingViews.count > 0) {
-        UIView *view = pendingViews.lastObject;
-        [pendingViews removeLastObject];
-        [pendingViews addObjectsFromArray:view.subviews ?: @[]];
+        while (pendingViews.count > 0) {
+            UIView *view = pendingViews.lastObject;
+            [pendingViews removeLastObject];
+            [pendingViews addObjectsFromArray:view.subviews ?: @[]];
 
-        NSString *className = NSStringFromClass([view class]) ?: @"";
-        if ([className containsString:@"CommentVCHeaderCloseBar"]) {
-            view.hidden = NO;
-            view.alpha = 1.0;
-            for (UIView *subview in view.subviews) {
-                subview.hidden = NO;
-                subview.alpha = 1.0;
-            }
-        } else if ([className containsString:@"CommentPanelHeaderNewCell"]) {
-            for (UIView *subview in view.subviews) {
-                subview.hidden = YES;
-            }
-            view.userInteractionEnabled = NO;
-        } else if ([className isEqualToString:@"IESSegmentedControl"]) {
-            view.hidden = YES;
-            view.alpha = 0.0;
-            view.userInteractionEnabled = NO;
-        }
-
-        if (!outerCollectionView && [view isKindOfClass:[UICollectionView class]] && view.superview == rootView) {
-            outerCollectionView = (UICollectionView *)view;
-        }
-
-        if ([className isEqualToString:@"AWETabContentItemContainerCell"]) {
-            UIResponder *responder = view;
-            for (NSUInteger index = 0; responder && index < 20; index++) {
-                if ([responder isKindOfClass:NSClassFromString(@"AWETabContentViewController")]) {
-                    [tabControllers addObject:(AWETabContentViewController *)responder];
-                    break;
+            NSString *className = NSStringFromClass([view class]) ?: @"";
+            if ([className containsString:@"CommentVCHeaderCloseBar"]) {
+                if (view.hidden) {
+                    view.hidden = NO;
                 }
-                responder = responder.nextResponder;
+                if (view.alpha != 1.0) {
+                    view.alpha = 1.0;
+                }
+                for (UIView *subview in view.subviews) {
+                    if (subview.hidden) {
+                        subview.hidden = NO;
+                    }
+                    if (subview.alpha != 1.0) {
+                        subview.alpha = 1.0;
+                    }
+                }
+            } else if ([className containsString:@"CommentPanelHeaderNewCell"]) {
+                for (UIView *subview in view.subviews) {
+                    if (!subview.hidden) {
+                        subview.hidden = YES;
+                    }
+                }
+                view.userInteractionEnabled = NO;
+            } else if ([className isEqualToString:@"IESSegmentedControl"]) {
+                if (!view.hidden) {
+                    view.hidden = YES;
+                }
+                if (view.alpha != 0.0) {
+                    view.alpha = 0.0;
+                }
+                view.userInteractionEnabled = NO;
+            }
+
+            if (!outerCollectionView && [view isKindOfClass:[UICollectionView class]] && view.superview == rootView) {
+                outerCollectionView = (UICollectionView *)view;
+            }
+
+            if ([className isEqualToString:@"AWETabContentItemContainerCell"]) {
+                UIResponder *responder = view;
+                for (NSUInteger index = 0; responder && index < 20; index++) {
+                    if ([responder isKindOfClass:NSClassFromString(@"AWETabContentViewController")]) {
+                        [tabControllers addObject:(AWETabContentViewController *)responder];
+                        break;
+                    }
+                    responder = responder.nextResponder;
+                }
             }
         }
-    }
 
-    for (AWETabContentViewController *tabController in tabControllers) {
-        BOOL wasManaged = [self isManagedTabContentController:tabController];
-        [self markTabContentController:tabController];
-        [tabController setCurrentIndex:0];
-        UICollectionView *contentScrollView = tabController.contentScrollView;
-        contentScrollView.scrollEnabled = NO;
-        contentScrollView.bounces = NO;
+        for (AWETabContentViewController *tabController in tabControllers) {
+            BOOL wasManaged = [self isManagedTabContentController:tabController];
+            if (!wasManaged) {
+                [self markTabContentController:tabController];
+                [tabController setCurrentIndex:0];
+            }
+            UICollectionView *contentScrollView = tabController.contentScrollView;
+            contentScrollView.scrollEnabled = NO;
+            contentScrollView.bounces = NO;
 
-        if (!wasManaged) {
-            dispatch_async(dispatch_get_main_queue(), ^{
-              if (![self isEnabled] || ![self isManagedTabContentController:tabController]) {
-                  return;
-              }
-              [tabController reloadTabContentWithCount:1];
-              [tabController updateSelectedIndex:0 animated:NO];
-            });
+            if (!wasManaged) {
+                dispatch_async(dispatch_get_main_queue(), ^{
+                  if (![self isEnabled] || ![self isManagedTabContentController:tabController]) {
+                      return;
+                  }
+                  [tabController reloadTabContentWithCount:1];
+                  [tabController updateSelectedIndex:0 animated:NO];
+                });
+            }
         }
-    }
 
-    if (firstApplication && outerCollectionView) {
-        [outerCollectionView.collectionViewLayout invalidateLayout];
-        [outerCollectionView setNeedsLayout];
+        if (firstApplication && outerCollectionView) {
+            [outerCollectionView.collectionViewLayout invalidateLayout];
+            [outerCollectionView setNeedsLayout];
+            [rootView setNeedsLayout];
+        }
+    } @finally {
+        objc_setAssociatedObject(containerController, &kDYYYCommentAIBlockerApplyingKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
-    [rootView setNeedsLayout];
 }
 
 @end

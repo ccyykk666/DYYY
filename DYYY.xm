@@ -11174,7 +11174,6 @@ static Class tabBarButtonClass = nil;
 
 - (void)tabContainerSectionController:(id)sectionController didScroll:(id)scrollView {
     if ([DYYYCommentAIBlocker isEnabled]) {
-        [DYYYCommentAIBlocker applyToContainerController:self];
         return;
     }
     %orig;
@@ -11185,7 +11184,6 @@ static Class tabBarButtonClass = nil;
                    itemViewController:(UIViewController *)itemViewController
                               isByTap:(BOOL)isByTap {
     if ([DYYYCommentAIBlocker shouldBlockViewController:itemViewController]) {
-        [DYYYCommentAIBlocker applyToContainerController:self];
         return;
     }
     %orig;
@@ -11237,13 +11235,6 @@ static Class tabBarButtonClass = nil;
         return 0;
     }
     return %orig;
-}
-
-- (UIViewController *)itemViewControllerAtIndex:(NSInteger)index {
-    if ([DYYYCommentAIBlocker isManagedTabContentController:self] && index > 0) {
-        return nil;
-    }
-    return %orig(index);
 }
 
 %end
