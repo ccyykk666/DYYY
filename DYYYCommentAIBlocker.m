@@ -167,6 +167,31 @@ static id DYYYCommentAIProbeSnapshotObject(id object, NSUInteger depth) {
     return [self isEnabled] && [objc_getAssociatedObject(viewController, &kDYYYManagedCommentTabControllerKey) boolValue];
 }
 
++ (BOOL)shouldManageTabContentController:(UIViewController *)viewController delegate:(id)delegate {
+    if (![self isEnabled] || !viewController) {
+        return NO;
+    }
+    if ([self isManagedTabContentController:viewController]) {
+        return YES;
+    }
+
+    id resolvedDelegate = delegate;
+    if (!resolvedDelegate) {
+        @try {
+            resolvedDelegate = [viewController valueForKey:@"delegate"];
+        } @catch (__unused NSException *exception) {
+            resolvedDelegate = nil;
+        }
+    }
+
+    NSString *delegateClassName = resolvedDelegate ? NSStringFromClass([resolvedDelegate class]) ?: @"" : @"";
+    if ([delegateClassName containsString:@"CommentContainerInnerViewController"]) {
+        [self markTabContentController:viewController];
+        return YES;
+    }
+    return NO;
+}
+
 #pragma mark - Diagnostics
 
 + (void)recordTabConfiguration:(id)configuration {

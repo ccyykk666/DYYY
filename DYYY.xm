@@ -11209,16 +11209,21 @@ static Class tabBarButtonClass = nil;
 
 %hook AWETabContentViewController
 
+- (void)setDelegate:(id)delegate {
+    %orig;
+    [DYYYCommentAIBlocker shouldManageTabContentController:self delegate:delegate];
+}
+
 - (NSArray *)sectionViewModels {
     NSArray *models = %orig;
-    if ([DYYYCommentAIBlocker isManagedTabContentController:self]) {
+    if ([DYYYCommentAIBlocker shouldManageTabContentController:self delegate:nil]) {
         return [DYYYCommentAIBlocker filteredTabItems:models];
     }
     return models;
 }
 
 - (void)reloadTabContentWithCount:(NSInteger)count {
-    if ([DYYYCommentAIBlocker isManagedTabContentController:self]) {
+    if ([DYYYCommentAIBlocker shouldManageTabContentController:self delegate:nil]) {
         NSInteger filteredCount = MIN(count, 1);
         %orig(filteredCount);
         return;
@@ -11227,7 +11232,7 @@ static Class tabBarButtonClass = nil;
 }
 
 - (void)updateSelectedIndex:(NSInteger)index animated:(BOOL)animated {
-    if ([DYYYCommentAIBlocker isManagedTabContentController:self]) {
+    if ([DYYYCommentAIBlocker shouldManageTabContentController:self delegate:nil]) {
         %orig(0, animated);
         return;
     }
@@ -11235,7 +11240,7 @@ static Class tabBarButtonClass = nil;
 }
 
 - (void)setCurrentIndex:(NSInteger)currentIndex {
-    if ([DYYYCommentAIBlocker isManagedTabContentController:self]) {
+    if ([DYYYCommentAIBlocker shouldManageTabContentController:self delegate:nil]) {
         %orig(0);
         return;
     }
@@ -11243,10 +11248,17 @@ static Class tabBarButtonClass = nil;
 }
 
 - (NSInteger)currentIndex {
-    if ([DYYYCommentAIBlocker isManagedTabContentController:self]) {
+    if ([DYYYCommentAIBlocker shouldManageTabContentController:self delegate:nil]) {
         return 0;
     }
     return %orig;
+}
+
+- (void)addItemViewController:(UIViewController *)viewController atIndex:(NSInteger)index {
+    if ([DYYYCommentAIBlocker shouldManageTabContentController:self delegate:nil] && index > 0) {
+        return;
+    }
+    %orig;
 }
 
 %end

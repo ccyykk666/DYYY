@@ -493,6 +493,7 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 - (NSArray *)sectionViewModels;
 - (void)reloadTabContentWithCount:(NSInteger)count;
 - (void)updateSelectedIndex:(NSInteger)index animated:(BOOL)animated;
+- (void)addItemViewController:(UIViewController *)viewController atIndex:(NSInteger)index;
 - (UIViewController *)itemViewControllerAtIndex:(NSInteger)index;
 @end
 

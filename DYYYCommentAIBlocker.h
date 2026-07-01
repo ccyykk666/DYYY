@@ -17,6 +17,7 @@ NS_ASSUME_NONNULL_BEGIN
 
 + (void)markTabContentController:(UIViewController *)viewController;
 + (BOOL)isManagedTabContentController:(UIViewController *)viewController;
++ (BOOL)shouldManageTabContentController:(UIViewController *)viewController delegate:(nullable id)delegate;
 
 + (void)recordTabConfiguration:(nullable id)configuration;
 + (void)recordTabItems:(nullable NSArray *)items;
