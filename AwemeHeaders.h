@@ -256,6 +256,7 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 
 @interface AWENormalModeTabBarGeneralButton : UIButton
 @property(nonatomic) NSInteger status;
+@property(nonatomic, weak) id delegate;
 @end
 
 @interface AWEHPTopTabItemBadgeContentView : UIView
@@ -439,18 +440,16 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @interface AWETabBarElementContainerView : UIView
 @end
 
-@interface AWEFakeTabBar : UITabBar
-@end
-
 @interface AWENormalModeTabBarBlurView : UIView
 @end
 
-@interface AWENormalModeTabBar : UIView
+@interface AWENormalModeTabBar : UITabBar
 @property(nonatomic, assign, readonly) UITabBarController *yy_viewController;
 @property(retain, nonatomic) AWETabBarSkinContainerView *skinContainerView;
 - (void)initializeOriginalTabBarHeight;
-- (AWEFakeTabBar *)dyyy_systemTabBar;
-- (void)dyyy_applySystemTabBarBackgroundIfAvailable;
+- (BOOL)dyyy_shouldUseIntegratedSystemTabBar;
+- (void)dyyy_restoreIntegratedSystemTabBar;
+- (void)dyyy_applyIntegratedSystemTabBarIfAvailable;
 @end
 
 @interface AWEPlayInteractionListenFeedView : UIView

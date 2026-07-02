@@ -36,6 +36,8 @@
   - `DYYYDiagnosticsViewController.(h/m)`：诊断手势、隐私选项、报告分享与清理入口。
 - **评论区适配**
   - `DYYYCommentAIBlocker.(h/m)`：在评论 Tab 数据源阶段过滤 AI 解析模型，不接管原生评论区布局。
+- **系统底栏桥接**
+  - `DYYYSystemTabBarDelegate.(h/m)`：将系统 `UITabBar` 的选中事件转发给抖音原有底栏按钮，不承担导航或自绘。
 - **ABTest / 远程配置**
   - `DYYYABTestHook.(h/xm)`：抖音 ABTest 注入。
 

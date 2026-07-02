@@ -28,6 +28,7 @@
 #import "DYYYFloatClearButton.h"
 #import "DYYYFloatSpeedButton.h"
 #import "DYYYSettingViewController.h"
+#import "DYYYSystemTabBarDelegate.h"
 #import "DYYYToast.h"
 #import "DYYYUtils.h"
 
@@ -10600,9 +10601,11 @@ static Class plusContainerButtonClass = nil;
 static Class plusButtonClass = nil;
 static Class plusInnerButtonClass = nil;
 static Class tabBarButtonClass = nil;
-static Class fakeTabBarClass = nil;
 static Class tabBarBlurViewClass = nil;
-static char kDYYYSystemTabBarGlassViewKey;
+static char kDYYYSystemTabBarDelegateKey;
+static char kDYYYSystemTabBarItemsKey;
+static char kDYYYSystemTabBarOriginalItemsKey;
+static char kDYYYSystemTabBarMutationKey;
 
 + (void)initialize {
     if (self == [%c(AWENormalModeTabBar) class]) {
@@ -10612,97 +10615,124 @@ static char kDYYYSystemTabBarGlassViewKey;
         plusButtonClass = %c(AWENormalModeTabBarGeneralPlusButton);
         plusInnerButtonClass = %c(AWENormalModeTabBarGeneralPlusInnerButton);
         tabBarButtonClass = %c(UITabBarButton);
-        fakeTabBarClass = %c(AWEFakeTabBar);
         tabBarBlurViewClass = %c(AWENormalModeTabBarBlurView);
     }
 }
 
 %new
-- (AWEFakeTabBar *)dyyy_systemTabBar {
-    if (!fakeTabBarClass || !self.superview) {
-        return nil;
+- (BOOL)dyyy_shouldUseIntegratedSystemTabBar {
+    return [NSProcessInfo processInfo].operatingSystemVersion.majorVersion >= 26 && NSClassFromString(@"UIGlassEffect") != nil && DYYYGetBool(@"DYYYHidePlusButton") &&
+           !DYYYGetBool(@"DYYYHideBottomBg") && !DYYYGetBool(@"DYYYEnableFullScreen");
+}
+
+%new
+- (void)dyyy_restoreIntegratedSystemTabBar {
+    DYYYSystemTabBarDelegate *delegateProxy = objc_getAssociatedObject(self, &kDYYYSystemTabBarDelegateKey);
+    if (delegateProxy && self.delegate == delegateProxy) {
+        self.delegate = delegateProxy.originalDelegate;
     }
 
-    for (UIView *sibling in self.superview.subviews) {
-        if (sibling == self) {
-            continue;
-        }
+    NSArray<UITabBarItem *> *originalItems = objc_getAssociatedObject(self, &kDYYYSystemTabBarOriginalItemsKey);
+    if (originalItems) {
+        objc_setAssociatedObject(self, &kDYYYSystemTabBarMutationKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        [self setItems:(originalItems.count > 0 ? originalItems : nil) animated:NO];
+        objc_setAssociatedObject(self, &kDYYYSystemTabBarMutationKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
 
-        NSString *className = NSStringFromClass(sibling.class);
-        BOOL isSystemTabBarContainer = [className containsString:@"TabBarContainer"];
-        if ([sibling isKindOfClass:fakeTabBarClass] || isSystemTabBarContainer) {
-            AWEFakeTabBar *systemTabBar = [DYYYUtils findSubviewOfClass:fakeTabBarClass inContainer:sibling];
-            if (systemTabBar) {
-                return systemTabBar;
+    objc_setAssociatedObject(self, &kDYYYSystemTabBarDelegateKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(self, &kDYYYSystemTabBarItemsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(self, &kDYYYSystemTabBarOriginalItemsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+%new
+- (void)dyyy_applyIntegratedSystemTabBarIfAvailable {
+    if (objc_getAssociatedObject(self, &kDYYYSystemTabBarMutationKey)) {
+        return;
+    }
+
+    if (![self dyyy_shouldUseIntegratedSystemTabBar]) {
+        [self dyyy_restoreIntegratedSystemTabBar];
+        return;
+    }
+
+    NSMutableArray<AWENormalModeTabBarGeneralButton *> *sourceButtons = [NSMutableArray array];
+    for (UIView *subview in self.subviews) {
+        if ([subview isKindOfClass:generalButtonClass] && !subview.hidden) {
+            [sourceButtons addObject:(AWENormalModeTabBarGeneralButton *)subview];
+        }
+    }
+    [sourceButtons sortUsingComparator:^NSComparisonResult(UIView *left, UIView *right) {
+      return [@(left.frame.origin.x) compare:@(right.frame.origin.x)];
+    }];
+
+    if (sourceButtons.count < 2) {
+        [self dyyy_restoreIntegratedSystemTabBar];
+        return;
+    }
+
+    NSMutableArray<NSString *> *titles = [NSMutableArray arrayWithCapacity:sourceButtons.count];
+    for (AWENormalModeTabBarGeneralButton *button in sourceButtons) {
+        NSString *title = button.accessibilityLabel ?: @"";
+        NSString *customTitle = nil;
+        if ([title isEqualToString:@"首页"]) {
+            customTitle = DYYYGetString(@"DYYYIndexTitle");
+        } else if ([title isEqualToString:@"朋友"]) {
+            customTitle = DYYYGetString(@"DYYYFriendsTitle");
+        } else if ([title containsString:@"消息"]) {
+            customTitle = DYYYGetString(@"DYYYMsgTitle");
+        } else if ([title isEqualToString:@"我"]) {
+            customTitle = DYYYGetString(@"DYYYSelfTitle");
+        }
+        [titles addObject:(customTitle.length > 0 ? customTitle : title)];
+    }
+
+    NSArray<UITabBarItem *> *systemItems = objc_getAssociatedObject(self, &kDYYYSystemTabBarItemsKey);
+    BOOL needsNewItems = systemItems.count != titles.count;
+    if (!needsNewItems) {
+        for (NSUInteger index = 0; index < titles.count; index++) {
+            if (![systemItems[index].title isEqualToString:titles[index]]) {
+                needsNewItems = YES;
+                break;
             }
         }
     }
 
-    return nil;
-}
-
-%new
-- (void)dyyy_applySystemTabBarBackgroundIfAvailable {
-    UIVisualEffectView *glassView = objc_getAssociatedObject(self, &kDYYYSystemTabBarGlassViewKey);
-    AWEFakeTabBar *systemTabBar = [self dyyy_systemTabBar];
-    Class glassEffectClass = NSClassFromString(@"UIGlassEffect");
-    SEL effectWithStyleSelector = NSSelectorFromString(@"effectWithStyle:");
-
-    if ([NSProcessInfo processInfo].operatingSystemVersion.majorVersion < 26 || !systemTabBar || ![glassEffectClass respondsToSelector:effectWithStyleSelector]) {
-        [glassView removeFromSuperview];
-        objc_setAssociatedObject(self, &kDYYYSystemTabBarGlassViewKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        return;
-    }
-
-    if (!glassView) {
-        // UIGlassEffectStyleRegular 的原始值为 0；动态调用避免旧 SDK 产生新系统类的硬链接。
-        UIVisualEffect *glassEffect = ((id (*)(id, SEL, NSInteger))objc_msgSend)((id)glassEffectClass, effectWithStyleSelector, 0);
-        if (!glassEffect) {
-            return;
+    if (needsNewItems) {
+        if (!objc_getAssociatedObject(self, &kDYYYSystemTabBarOriginalItemsKey)) {
+            objc_setAssociatedObject(self, &kDYYYSystemTabBarOriginalItemsKey, self.items ?: @[], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         }
 
-        glassView = [[UIVisualEffectView alloc] initWithEffect:glassEffect];
-        glassView.userInteractionEnabled = NO;
-        glassView.backgroundColor = UIColor.clearColor;
-        glassView.opaque = NO;
-        glassView.alpha = 1.0;
-
-        Class cornerConfigurationClass = NSClassFromString(@"UICornerConfiguration");
-        SEL capsuleSelector = NSSelectorFromString(@"capsuleConfiguration");
-        SEL setCornerConfigurationSelector = NSSelectorFromString(@"setCornerConfiguration:");
-        if ([cornerConfigurationClass respondsToSelector:capsuleSelector] && [glassView respondsToSelector:setCornerConfigurationSelector]) {
-            id capsuleConfiguration = ((id (*)(id, SEL))objc_msgSend)((id)cornerConfigurationClass, capsuleSelector);
-            ((void (*)(id, SEL, id))objc_msgSend)(glassView, setCornerConfigurationSelector, capsuleConfiguration);
+        NSMutableArray<UITabBarItem *> *newItems = [NSMutableArray arrayWithCapacity:titles.count];
+        for (NSUInteger index = 0; index < titles.count; index++) {
+            UITabBarItem *item = [[UITabBarItem alloc] initWithTitle:titles[index] image:nil tag:index];
+            item.accessibilityIdentifier = [NSString stringWithFormat:@"DYYYSystemTabBarItem%lu", (unsigned long)index];
+            [newItems addObject:item];
         }
+        systemItems = [newItems copy];
 
-        [self insertSubview:glassView atIndex:0];
-        objc_setAssociatedObject(self, &kDYYYSystemTabBarGlassViewKey, glassView, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(self, &kDYYYSystemTabBarMutationKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        [self setItems:systemItems animated:NO];
+        objc_setAssociatedObject(self, &kDYYYSystemTabBarMutationKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(self, &kDYYYSystemTabBarItemsKey, systemItems, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
 
-    UIView *systemPlatterView = nil;
-    for (UIView *subview in systemTabBar.subviews) {
-        if ([NSStringFromClass(subview.class) containsString:@"TabBarItemPlatterView"] && subview.bounds.size.width > 1.0) {
-            systemPlatterView = subview;
-            break;
-        }
+    DYYYSystemTabBarDelegate *delegateProxy = objc_getAssociatedObject(self, &kDYYYSystemTabBarDelegateKey);
+    if (!delegateProxy) {
+        delegateProxy = [[DYYYSystemTabBarDelegate alloc] init];
+        delegateProxy.sourceTabBar = self;
+        delegateProxy.originalDelegate = self.delegate;
+        objc_setAssociatedObject(self, &kDYYYSystemTabBarDelegateKey, delegateProxy, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    } else if (self.delegate != delegateProxy) {
+        delegateProxy.originalDelegate = self.delegate;
     }
+    delegateProxy.sourceButtons = sourceButtons;
+    self.delegate = delegateProxy;
 
-    CGRect glassFrame = CGRectZero;
-    if (systemPlatterView) {
-        glassFrame = [systemPlatterView convertRect:systemPlatterView.bounds toView:self];
-    }
-    if (CGRectIsEmpty(glassFrame) || CGRectIsInfinite(glassFrame) || CGRectIsNull(glassFrame)) {
-        CGFloat horizontalInset = MIN(21.0, CGRectGetWidth(self.bounds) * 0.05);
-        glassFrame = CGRectMake(horizontalInset, 0, MAX(0, CGRectGetWidth(self.bounds) - horizontalInset * 2), MIN(62.0, CGRectGetHeight(self.bounds)));
-    }
-
-    glassView.frame = glassFrame;
-    glassView.hidden = NO;
-
-    if (![glassView respondsToSelector:NSSelectorFromString(@"setCornerConfiguration:")]) {
-        glassView.layer.cornerRadius = CGRectGetHeight(glassFrame) / 2.0;
-        glassView.layer.cornerCurve = kCACornerCurveContinuous;
-        glassView.clipsToBounds = YES;
+    NSUInteger selectedIndex = [sourceButtons indexOfObjectPassingTest:^BOOL(AWENormalModeTabBarGeneralButton *button, NSUInteger index, BOOL *stop) {
+      return button.status == 2;
+    }];
+    if (selectedIndex != NSNotFound && selectedIndex < systemItems.count) {
+        self.selectedItem = systemItems[selectedIndex];
     }
 
     self.backgroundColor = UIColor.clearColor;
@@ -10710,13 +10740,12 @@ static char kDYYYSystemTabBarGlassViewKey;
     self.skinContainerView.hidden = YES;
 
     for (UIView *subview in self.subviews) {
-        if (subview == glassView) {
-            continue;
-        }
-
         BOOL containsDouyinBlur = tabBarBlurViewClass && [DYYYUtils containsSubviewOfClass:tabBarBlurViewClass inContainer:subview];
-        if ([subview isKindOfClass:barBackgroundClass] || containsDouyinBlur) {
+        if (containsDouyinBlur || [subview isKindOfClass:generalButtonClass]) {
             subview.hidden = YES;
+        } else if ([subview isKindOfClass:tabBarButtonClass]) {
+            subview.hidden = NO;
+            subview.userInteractionEnabled = YES;
         }
     }
 }
@@ -10774,6 +10803,7 @@ static char kDYYYSystemTabBarGlassViewKey;
     BOOL hideMe = DYYYGetBool(@"DYYYHideMyButton");
     BOOL hidePlus = DYYYGetBool(@"DYYYHidePlusButton");
     BOOL isPad = (UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad);
+    BOOL useIntegratedSystemTabBar = [self dyyy_shouldUseIntegratedSystemTabBar];
 
     NSMutableArray *visibleButtons = [NSMutableArray array];
     UIView *ipadContainerView = nil;
@@ -10794,8 +10824,8 @@ static char kDYYYSystemTabBarGlassViewKey;
                 [visibleButtons addObject:subview];
             }
         } else if ([subview isKindOfClass:tabBarButtonClass]) {
-            subview.userInteractionEnabled = NO;
-            subview.hidden = YES;
+            subview.userInteractionEnabled = useIntegratedSystemTabBar;
+            subview.hidden = !useIntegratedSystemTabBar;
         } else if (isPad && !ipadContainerView && [subview isMemberOfClass:UIView.class] && fabs(subview.frame.size.width - self.bounds.size.width) > 0.1) {
             ipadContainerView = subview;
         }
@@ -10891,7 +10921,7 @@ static char kDYYYSystemTabBarGlassViewKey;
         }
     }
 
-    [self dyyy_applySystemTabBarBackgroundIfAvailable];
+    [self dyyy_applyIntegratedSystemTabBarIfAvailable];
 }
 
 - (void)setHidden:(BOOL)hidden {
@@ -10965,7 +10995,7 @@ static char kDYYYSystemTabBarGlassViewKey;
         }
     }
 
-    [self dyyy_applySystemTabBarBackgroundIfAvailable];
+    [self dyyy_applyIntegratedSystemTabBarIfAvailable];
 }
 
 %end
@@ -11022,6 +11052,15 @@ static char kDYYYSystemTabBarGlassViewKey;
         }
     }
     return %orig;
+}
+
+- (void)setStatus:(NSInteger)status {
+    %orig(status);
+
+    __weak UIView *tabBar = self.superview;
+    dispatch_async(dispatch_get_main_queue(), ^{
+      [tabBar setNeedsLayout];
+    });
 }
 
 %end
@@ -11316,8 +11355,6 @@ static char kDYYYSystemTabBarGlassViewKey;
     }
     return %orig;
 }
-
-%end
 
 %end
 
