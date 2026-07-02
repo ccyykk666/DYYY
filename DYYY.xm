@@ -10600,28 +10600,6 @@ static Class plusContainerButtonClass = nil;
 static Class plusButtonClass = nil;
 static Class plusInnerButtonClass = nil;
 static Class tabBarButtonClass = nil;
-static Class tabBarBlurViewClass = nil;
-static char kDYYYInstagramTabBarBlurKey;
-static char kDYYYInstagramTabBarIconKey;
-static char kDYYYInstagramOriginalHiddenKey;
-static char kDYYYInstagramOriginalBackgroundColorKey;
-static char kDYYYInstagramOriginalOpaqueKey;
-static char kDYYYInstagramFakeTabBarOriginalHiddenKey;
-static char kDYYYInstagramFakeTabBarOriginalInteractionKey;
-static char kDYYYInstagramTabBarVisibilityMutationKey;
-static char kDYYYInstagramLiveBlurSourceKey;
-static char kDYYYInstagramLiveBlurOwnerKey;
-static char kDYYYInstagramLiveBlurOriginalSuperviewKey;
-static char kDYYYInstagramLiveBlurOriginalIndexKey;
-static char kDYYYInstagramLiveBlurOriginalFrameKey;
-static char kDYYYInstagramLiveBlurOriginalHiddenKey;
-static char kDYYYInstagramLiveBlurOriginalAlphaKey;
-static char kDYYYInstagramLiveBlurOriginalInteractionKey;
-static char kDYYYInstagramLiveBlurOriginalAutoresizingKey;
-static char kDYYYInstagramLiveBlurOriginalTranslatesAutoresizingKey;
-static char kDYYYInstagramLiveBlurOriginalTransformKey;
-static char kDYYYInstagramLiveBlurOriginalConstraintsKey;
-static const NSInteger kDYYYInstagramTabBarTintTag = 9217;
 
 + (void)initialize {
     if (self == [%c(AWENormalModeTabBar) class]) {
@@ -10631,301 +10609,6 @@ static const NSInteger kDYYYInstagramTabBarTintTag = 9217;
         plusButtonClass = %c(AWENormalModeTabBarGeneralPlusButton);
         plusInnerButtonClass = %c(AWENormalModeTabBarGeneralPlusInnerButton);
         tabBarButtonClass = %c(UITabBarButton);
-        tabBarBlurViewClass = %c(AWENormalModeTabBarBlurView);
-    }
-}
-
-%new
-- (BOOL)dyyy_shouldUseInstagramTabBarStyle {
-    if (@available(iOS 13.0, *)) {
-        return DYYYGetBool(@"DYYYHidePlusButton") && !DYYYGetBool(@"DYYYHideBottomBg") && !DYYYGetBool(@"DYYYEnableFullScreen");
-    }
-    return NO;
-}
-
-%new
-- (BOOL)dyyy_viewIsInsideBadgeContainer:(UIView *)view root:(UIView *)root {
-    for (UIView *current = view; current && current != root; current = current.superview) {
-        NSString *className = NSStringFromClass(current.class);
-        if ([className containsString:@"Badge"] || [className containsString:@"Dot"]) {
-            return YES;
-        }
-    }
-    return NO;
-}
-
-%new
-- (void)dyyy_setOriginalButtonContentHidden:(BOOL)hidden inView:(UIView *)view root:(UIView *)root {
-    for (UIView *subview in view.subviews) {
-        UIImageView *instagramIcon = objc_getAssociatedObject(root, &kDYYYInstagramTabBarIconKey);
-        if (subview == instagramIcon || [self dyyy_viewIsInsideBadgeContainer:subview root:root]) {
-            continue;
-        }
-
-        if ([subview isKindOfClass:UILabel.class] || [subview isKindOfClass:UIImageView.class]) {
-            NSNumber *originalHidden = objc_getAssociatedObject(subview, &kDYYYInstagramOriginalHiddenKey);
-            if (hidden) {
-                if (!originalHidden) {
-                    objc_setAssociatedObject(subview, &kDYYYInstagramOriginalHiddenKey, @(subview.hidden), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-                }
-                subview.hidden = YES;
-            } else if (originalHidden) {
-                subview.hidden = originalHidden.boolValue;
-                objc_setAssociatedObject(subview, &kDYYYInstagramOriginalHiddenKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-            }
-        }
-        [self dyyy_setOriginalButtonContentHidden:hidden inView:subview root:root];
-    }
-}
-
-%new
-- (void)dyyy_updateInstagramIconForButton:(AWENormalModeTabBarGeneralButton *)button {
-    if (!button) {
-        return;
-    }
-
-    NSString *label = button.accessibilityLabel ?: @"";
-    if (label.length == 0) {
-        UILabel *titleLabel = [DYYYUtils findSubviewOfClass:UILabel.class inContainer:button];
-        label = titleLabel.text ?: @"";
-    }
-    NSString *symbolName = @"circle.grid.2x2";
-    NSString *selectedSymbolName = @"circle.grid.2x2.fill";
-    if ([label isEqualToString:@"首页"]) {
-        symbolName = @"house";
-        selectedSymbolName = @"house.fill";
-    } else if ([label containsString:@"朋友"]) {
-        symbolName = @"person.2";
-        selectedSymbolName = @"person.2.fill";
-    } else if ([label containsString:@"消息"]) {
-        symbolName = @"message";
-        selectedSymbolName = @"message.fill";
-    } else if ([label isEqualToString:@"我"]) {
-        symbolName = @"person.crop.circle";
-        selectedSymbolName = @"person.crop.circle.fill";
-    } else if ([label containsString:@"商城"]) {
-        symbolName = @"bag";
-        selectedSymbolName = @"bag.fill";
-    }
-
-    UIImageView *iconView = objc_getAssociatedObject(button, &kDYYYInstagramTabBarIconKey);
-    if (!iconView) {
-        iconView = [[UIImageView alloc] initWithFrame:CGRectZero];
-        iconView.userInteractionEnabled = NO;
-        iconView.contentMode = UIViewContentModeCenter;
-        iconView.isAccessibilityElement = NO;
-        [button addSubview:iconView];
-        objc_setAssociatedObject(button, &kDYYYInstagramTabBarIconKey, iconView, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
-
-    BOOL selected = button.status == 2;
-    UIImageSymbolConfiguration *configuration = [UIImageSymbolConfiguration configurationWithPointSize:22.0 weight:(selected ? UIImageSymbolWeightSemibold : UIImageSymbolWeightRegular)];
-    UIImage *image = [[UIImage systemImageNamed:(selected ? selectedSymbolName : symbolName)] imageByApplyingSymbolConfiguration:configuration];
-    iconView.image = [image imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
-    iconView.tintColor = selected ? UIColor.whiteColor : [UIColor colorWithWhite:0.72 alpha:1.0];
-    iconView.frame = button.bounds;
-    iconView.hidden = NO;
-    [iconView.layer removeAllAnimations];
-    [button bringSubviewToFront:iconView];
-    [self dyyy_setOriginalButtonContentHidden:YES inView:button root:button];
-}
-
-%new
-- (void)dyyy_clearInstagramLiveBlurSourceViewForOwner:(UIViewController *)owner {
-    UIView *sourceView = objc_getAssociatedObject(self, &kDYYYInstagramLiveBlurSourceKey);
-    UIViewController *sourceOwner = objc_getAssociatedObject(self, &kDYYYInstagramLiveBlurOwnerKey);
-    if (!sourceView || (owner && sourceOwner != owner)) {
-        return;
-    }
-
-    UIView *originalSuperview = objc_getAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalSuperviewKey);
-    NSNumber *originalIndex = objc_getAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalIndexKey);
-    NSValue *originalFrame = objc_getAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalFrameKey);
-    NSNumber *originalHidden = objc_getAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalHiddenKey);
-    NSNumber *originalAlpha = objc_getAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalAlphaKey);
-    NSNumber *originalInteraction = objc_getAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalInteractionKey);
-    NSNumber *originalAutoresizing = objc_getAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalAutoresizingKey);
-    NSNumber *originalTranslatesAutoresizing = objc_getAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalTranslatesAutoresizingKey);
-    NSValue *originalTransform = objc_getAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalTransformKey);
-    NSArray<NSLayoutConstraint *> *originalConstraints = objc_getAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalConstraintsKey);
-
-    [sourceView removeFromSuperview];
-    if (originalSuperview) {
-        NSUInteger index = MIN(originalIndex.unsignedIntegerValue, originalSuperview.subviews.count);
-        [originalSuperview insertSubview:sourceView atIndex:index];
-        sourceView.transform = originalTransform.CGAffineTransformValue;
-        sourceView.frame = originalFrame.CGRectValue;
-        sourceView.hidden = originalHidden.boolValue;
-        sourceView.alpha = originalAlpha.doubleValue;
-        sourceView.userInteractionEnabled = originalInteraction.boolValue;
-        sourceView.autoresizingMask = originalAutoresizing.unsignedIntegerValue;
-        sourceView.translatesAutoresizingMaskIntoConstraints = originalTranslatesAutoresizing.boolValue;
-        for (NSLayoutConstraint *constraint in originalConstraints) {
-            if (![originalSuperview.constraints containsObject:constraint]) {
-                [originalSuperview addConstraint:constraint];
-            }
-        }
-    }
-
-    objc_setAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalSuperviewKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    objc_setAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalIndexKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    objc_setAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalFrameKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    objc_setAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalHiddenKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    objc_setAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalAlphaKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    objc_setAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalInteractionKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    objc_setAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalAutoresizingKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    objc_setAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalTranslatesAutoresizingKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    objc_setAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalTransformKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    objc_setAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalConstraintsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    objc_setAssociatedObject(self, &kDYYYInstagramLiveBlurSourceKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    objc_setAssociatedObject(self, &kDYYYInstagramLiveBlurOwnerKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-}
-
-%new
-- (void)dyyy_setInstagramLiveBlurSourceView:(UIView *)sourceView owner:(UIViewController *)owner {
-    if (!sourceView || !sourceView.superview || !owner || sourceView == self || [self isDescendantOfView:sourceView] || ![self dyyy_shouldUseInstagramTabBarStyle]) {
-        return;
-    }
-
-    UIView *currentSourceView = objc_getAssociatedObject(self, &kDYYYInstagramLiveBlurSourceKey);
-    if (currentSourceView && currentSourceView != sourceView) {
-        [self dyyy_clearInstagramLiveBlurSourceViewForOwner:nil];
-    }
-
-    if (sourceView.superview != self) {
-        UIView *originalSuperview = sourceView.superview;
-        NSUInteger originalIndex = originalSuperview ? [originalSuperview.subviews indexOfObjectIdenticalTo:sourceView] : NSNotFound;
-        objc_setAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalSuperviewKey, originalSuperview, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        objc_setAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalIndexKey, @(originalIndex == NSNotFound ? originalSuperview.subviews.count : originalIndex), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        objc_setAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalFrameKey, [NSValue valueWithCGRect:sourceView.frame], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        objc_setAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalHiddenKey, @(sourceView.hidden), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        objc_setAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalAlphaKey, @(sourceView.alpha), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        objc_setAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalInteractionKey, @(sourceView.userInteractionEnabled), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        objc_setAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalAutoresizingKey, @(sourceView.autoresizingMask), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        objc_setAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalTranslatesAutoresizingKey, @(sourceView.translatesAutoresizingMaskIntoConstraints), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        objc_setAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalTransformKey, [NSValue valueWithCGAffineTransform:sourceView.transform], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        NSMutableArray<NSLayoutConstraint *> *sourceConstraints = [NSMutableArray array];
-        for (NSLayoutConstraint *constraint in originalSuperview.constraints) {
-            if (constraint.firstItem == sourceView || constraint.secondItem == sourceView) {
-                [sourceConstraints addObject:constraint];
-            }
-        }
-        objc_setAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalConstraintsKey, [sourceConstraints copy], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        [self insertSubview:sourceView atIndex:0];
-    }
-
-    objc_setAssociatedObject(self, &kDYYYInstagramLiveBlurSourceKey, sourceView, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    objc_setAssociatedObject(self, &kDYYYInstagramLiveBlurOwnerKey, owner, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    sourceView.transform = CGAffineTransformIdentity;
-    sourceView.translatesAutoresizingMaskIntoConstraints = YES;
-    sourceView.frame = self.bounds;
-    sourceView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    sourceView.hidden = NO;
-    sourceView.alpha = 1.0;
-    sourceView.userInteractionEnabled = NO;
-    [self dyyy_applyInstagramTabBarStyle];
-}
-
-%new
-- (void)dyyy_restoreInstagramTabBarStyle {
-    [self dyyy_clearInstagramLiveBlurSourceViewForOwner:nil];
-
-    UIVisualEffectView *blurView = objc_getAssociatedObject(self, &kDYYYInstagramTabBarBlurKey);
-    [blurView removeFromSuperview];
-    objc_setAssociatedObject(self, &kDYYYInstagramTabBarBlurKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-
-    UIColor *originalBackgroundColor = objc_getAssociatedObject(self, &kDYYYInstagramOriginalBackgroundColorKey);
-    NSNumber *originalOpaque = objc_getAssociatedObject(self, &kDYYYInstagramOriginalOpaqueKey);
-    if (originalBackgroundColor) {
-        self.backgroundColor = originalBackgroundColor;
-        objc_setAssociatedObject(self, &kDYYYInstagramOriginalBackgroundColorKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
-    if (originalOpaque) {
-        self.opaque = originalOpaque.boolValue;
-        objc_setAssociatedObject(self, &kDYYYInstagramOriginalOpaqueKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
-
-    for (UIView *subview in self.subviews) {
-        if (![subview isKindOfClass:generalButtonClass]) {
-            continue;
-        }
-        UIImageView *iconView = objc_getAssociatedObject(subview, &kDYYYInstagramTabBarIconKey);
-        [iconView removeFromSuperview];
-        objc_setAssociatedObject(subview, &kDYYYInstagramTabBarIconKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        [self dyyy_setOriginalButtonContentHidden:NO inView:subview root:subview];
-    }
-}
-
-%new
-- (void)dyyy_applyInstagramTabBarStyle {
-    if (![self dyyy_shouldUseInstagramTabBarStyle]) {
-        [self dyyy_restoreInstagramTabBarStyle];
-        return;
-    }
-
-    if (!objc_getAssociatedObject(self, &kDYYYInstagramOriginalBackgroundColorKey)) {
-        objc_setAssociatedObject(self, &kDYYYInstagramOriginalBackgroundColorKey, self.backgroundColor ?: UIColor.clearColor, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        objc_setAssociatedObject(self, &kDYYYInstagramOriginalOpaqueKey, @(self.opaque), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
-    if (self.hidden) {
-        objc_setAssociatedObject(self, &kDYYYInstagramTabBarVisibilityMutationKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        self.hidden = NO;
-        objc_setAssociatedObject(self, &kDYYYInstagramTabBarVisibilityMutationKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
-    self.backgroundColor = UIColor.clearColor;
-    self.opaque = NO;
-    self.skinContainerView.hidden = YES;
-
-    UIVisualEffectView *blurView = objc_getAssociatedObject(self, &kDYYYInstagramTabBarBlurKey);
-    if (!blurView) {
-        UIBlurEffect *effect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemUltraThinMaterialDark];
-        blurView = [[UIVisualEffectView alloc] initWithEffect:effect];
-        blurView.userInteractionEnabled = NO;
-        blurView.isAccessibilityElement = NO;
-
-        UIView *tintView = [[UIView alloc] initWithFrame:blurView.bounds];
-        tintView.tag = kDYYYInstagramTabBarTintTag;
-        tintView.userInteractionEnabled = NO;
-        tintView.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.06];
-        [blurView.contentView addSubview:tintView];
-
-        objc_setAssociatedObject(self, &kDYYYInstagramTabBarBlurKey, blurView, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        [self insertSubview:blurView atIndex:0];
-    }
-    blurView.frame = self.bounds;
-    blurView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    blurView.hidden = NO;
-    UIView *tintView = [blurView.contentView viewWithTag:kDYYYInstagramTabBarTintTag];
-    tintView.frame = blurView.bounds;
-    UIView *liveBlurSourceView = objc_getAssociatedObject(self, &kDYYYInstagramLiveBlurSourceKey);
-    if (liveBlurSourceView.superview == self) {
-        liveBlurSourceView.frame = self.bounds;
-        [self sendSubviewToBack:liveBlurSourceView];
-        [self insertSubview:blurView aboveSubview:liveBlurSourceView];
-    } else {
-        [self sendSubviewToBack:blurView];
-    }
-
-    for (UIView *subview in self.subviews) {
-        if (subview == blurView || subview == liveBlurSourceView) {
-            continue;
-        }
-
-        BOOL isGeneralButton = [subview isKindOfClass:generalButtonClass];
-        BOOL isPlusButton = [subview isKindOfClass:plusContainerButtonClass] || [subview isKindOfClass:plusButtonClass] || [subview isKindOfClass:plusInnerButtonClass];
-        BOOL isOriginalBackground = [subview isKindOfClass:barBackgroundClass] ||
-                                    (tabBarBlurViewClass && [DYYYUtils containsSubviewOfClass:tabBarBlurViewClass inContainer:subview]) ||
-                                    ([subview isMemberOfClass:UIView.class] && ![DYYYUtils containsSubviewOfClass:generalButtonClass inContainer:subview] &&
-                                     fabs(subview.bounds.size.height - self.bounds.size.height) < 0.5);
-        if (isGeneralButton && !subview.hidden) {
-            [self dyyy_updateInstagramIconForButton:(AWENormalModeTabBarGeneralButton *)subview];
-        } else if ([subview isKindOfClass:tabBarButtonClass] || isOriginalBackground) {
-            subview.hidden = YES;
-            subview.userInteractionEnabled = NO;
-        } else if (isPlusButton && DYYYGetBool(@"DYYYHidePlusButton")) {
-            subview.hidden = YES;
-            subview.userInteractionEnabled = NO;
-        }
     }
 }
 
@@ -10982,6 +10665,7 @@ static const NSInteger kDYYYInstagramTabBarTintTag = 9217;
     BOOL hideMe = DYYYGetBool(@"DYYYHideMyButton");
     BOOL hidePlus = DYYYGetBool(@"DYYYHidePlusButton");
     BOOL isPad = (UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad);
+
     NSMutableArray *visibleButtons = [NSMutableArray array];
     UIView *ipadContainerView = nil;
 
@@ -11097,18 +10781,10 @@ static const NSInteger kDYYYInstagramTabBarTintTag = 9217;
             }
         }
     }
-
-    [self dyyy_applyInstagramTabBarStyle];
 }
 
 - (void)setHidden:(BOOL)hidden {
-    if ([objc_getAssociatedObject(self, &kDYYYInstagramTabBarVisibilityMutationKey) boolValue]) {
-        %orig(hidden);
-        return;
-    }
-
-    BOOL useInstagramStyle = [self dyyy_shouldUseInstagramTabBarStyle];
-    %orig(useInstagramStyle ? NO : hidden);
+    %orig(hidden);
 
     BOOL disableHomeRefresh = DYYYGetBool(@"DYYYDisableHomeRefresh");
     BOOL enableFullScreen = DYYYGetBool(@"DYYYEnableFullScreen");
@@ -11177,51 +10853,6 @@ static const NSInteger kDYYYInstagramTabBarTintTag = 9217;
             }
         }
     }
-
-    if (useInstagramStyle) {
-        [self dyyy_applyInstagramTabBarStyle];
-    } else {
-        [self dyyy_restoreInstagramTabBarStyle];
-    }
-}
-
-%end
-
-%hook AWEFakeTabBar
-
-- (void)setHidden:(BOOL)hidden {
-    BOOL useInstagramStyle = DYYYGetBool(@"DYYYHidePlusButton") && !DYYYGetBool(@"DYYYHideBottomBg") && !DYYYGetBool(@"DYYYEnableFullScreen");
-    if (useInstagramStyle) {
-        if (!objc_getAssociatedObject(self, &kDYYYInstagramFakeTabBarOriginalHiddenKey)) {
-            objc_setAssociatedObject(self, &kDYYYInstagramFakeTabBarOriginalHiddenKey, @(hidden), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-            objc_setAssociatedObject(self, &kDYYYInstagramFakeTabBarOriginalInteractionKey, @(self.userInteractionEnabled), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        }
-        %orig(YES);
-        self.userInteractionEnabled = NO;
-        return;
-    }
-
-    NSNumber *originalHidden = objc_getAssociatedObject(self, &kDYYYInstagramFakeTabBarOriginalHiddenKey);
-    NSNumber *originalInteraction = objc_getAssociatedObject(self, &kDYYYInstagramFakeTabBarOriginalInteractionKey);
-    if (originalHidden) {
-        %orig(originalHidden.boolValue);
-        self.userInteractionEnabled = originalInteraction.boolValue;
-        objc_setAssociatedObject(self, &kDYYYInstagramFakeTabBarOriginalHiddenKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        objc_setAssociatedObject(self, &kDYYYInstagramFakeTabBarOriginalInteractionKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    } else {
-        %orig(hidden);
-    }
-}
-
-- (void)layoutSubviews {
-    %orig;
-
-    if (DYYYGetBool(@"DYYYHidePlusButton") && !DYYYGetBool(@"DYYYHideBottomBg") && !DYYYGetBool(@"DYYYEnableFullScreen")) {
-        self.hidden = YES;
-        self.userInteractionEnabled = NO;
-    } else if (objc_getAssociatedObject(self, &kDYYYInstagramFakeTabBarOriginalHiddenKey)) {
-        self.hidden = NO;
-    }
 }
 
 %end
@@ -11278,26 +10909,6 @@ static const NSInteger kDYYYInstagramTabBarTintTag = 9217;
         }
     }
     return %orig;
-}
-
-- (void)setStatus:(NSInteger)status {
-    %orig(status);
-
-    __weak AWENormalModeTabBarGeneralButton *weakButton = self;
-    void (^updateIcon)(void) = ^{
-      AWENormalModeTabBarGeneralButton *button = weakButton;
-      AWENormalModeTabBar *tabBar = [button.superview isKindOfClass:%c(AWENormalModeTabBar)] ? (AWENormalModeTabBar *)button.superview : nil;
-      if ([tabBar dyyy_shouldUseInstagramTabBarStyle]) {
-          [UIView performWithoutAnimation:^{
-            [tabBar dyyy_updateInstagramIconForButton:button];
-          }];
-      }
-    };
-    if ([NSThread isMainThread]) {
-        updateIcon();
-    } else {
-        dispatch_async(dispatch_get_main_queue(), updateIcon);
-    }
 }
 
 %end
@@ -12166,7 +11777,6 @@ static const NSInteger kDYYYInstagramTabBarTintTag = 9217;
 
 - (void)viewDidLayoutSubviews {
     %orig;
-
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
         UIView *contentView = self.contentView;
         if (contentView && contentView.superview) {
@@ -12216,26 +11826,6 @@ static const NSInteger kDYYYInstagramTabBarTintTag = 9217;
 
 - (void)viewDidLayoutSubviews {
     %orig;
-
-    if (DYYYGetBool(@"DYYYHidePlusButton") && !DYYYGetBool(@"DYYYHideBottomBg") && !DYYYGetBool(@"DYYYEnableFullScreen")) {
-        id extraView = self.bottomGaussianBlurView;
-        UIView *blurSourceView = [extraView isKindOfClass:UIView.class] ? (UIView *)extraView : nil;
-        if (!blurSourceView && [extraView respondsToSelector:@selector(view)]) {
-            id view = ((id (*)(id, SEL))objc_msgSend)(extraView, @selector(view));
-            blurSourceView = [view isKindOfClass:UIView.class] ? (UIView *)view : nil;
-        }
-        if (!blurSourceView && [extraView respondsToSelector:@selector(contentView)]) {
-            id contentView = ((id (*)(id, SEL))objc_msgSend)(extraView, @selector(contentView));
-            blurSourceView = [contentView isKindOfClass:UIView.class] ? (UIView *)contentView : nil;
-        }
-
-        UIWindow *window = self.view.window ?: [DYYYUtils getActiveWindow];
-        AWENormalModeTabBar *tabBar = [DYYYUtils findSubviewOfClass:%c(AWENormalModeTabBar) inContainer:window];
-        if (tabBar && blurSourceView) {
-            [tabBar dyyy_setInstagramLiveBlurSourceView:blurSourceView owner:self];
-        }
-    }
-
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
         UIView *contentView = self.contentView;
         if (contentView && contentView.superview) {
@@ -12251,14 +11841,6 @@ static const NSInteger kDYYYInstagramTabBarTintTag = 9217;
             }
         }
     }
-}
-
-- (void)viewDidDisappear:(BOOL)animated {
-    %orig;
-
-    UIWindow *window = self.view.window ?: [DYYYUtils getActiveWindow];
-    AWENormalModeTabBar *tabBar = [DYYYUtils findSubviewOfClass:%c(AWENormalModeTabBar) inContainer:window];
-    [tabBar dyyy_clearInstagramLiveBlurSourceViewForOwner:self];
 }
 
 - (void)setIsAutoPlay:(BOOL)arg0 {

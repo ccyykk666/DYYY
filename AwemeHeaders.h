@@ -439,24 +439,10 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @interface AWETabBarElementContainerView : UIView
 @end
 
-@interface AWENormalModeTabBarBlurView : UIView
-@end
-
-@interface AWEFakeTabBar : UITabBar
-@end
-
-@interface AWENormalModeTabBar : UITabBar
+@interface AWENormalModeTabBar : UIView
 @property(nonatomic, assign, readonly) UITabBarController *yy_viewController;
 @property(retain, nonatomic) AWETabBarSkinContainerView *skinContainerView;
 - (void)initializeOriginalTabBarHeight;
-- (BOOL)dyyy_shouldUseInstagramTabBarStyle;
-- (BOOL)dyyy_viewIsInsideBadgeContainer:(UIView *)view root:(UIView *)root;
-- (void)dyyy_setOriginalButtonContentHidden:(BOOL)hidden inView:(UIView *)view root:(UIView *)root;
-- (void)dyyy_updateInstagramIconForButton:(AWENormalModeTabBarGeneralButton *)button;
-- (void)dyyy_setInstagramLiveBlurSourceView:(UIView *)sourceView owner:(UIViewController *)owner;
-- (void)dyyy_clearInstagramLiveBlurSourceViewForOwner:(UIViewController *)owner;
-- (void)dyyy_restoreInstagramTabBarStyle;
-- (void)dyyy_applyInstagramTabBarStyle;
 @end
 
 @interface AWEPlayInteractionListenFeedView : UIView
@@ -1320,15 +1306,8 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 - (void)setVideoControllerPlaybackRate:(double)arg0;
 @end
 
-@protocol ALMIESVideoPlayerExtraViewProtocol <NSObject>
-@optional
-@property(nonatomic, readonly) UIView *view;
-@property(nonatomic, readonly) UIView *contentView;
-@end
-
 @interface AWEDPlayerViewController_Merge : UIViewController
 @property(nonatomic) UIView *contentView;
-@property(nonatomic, readonly) id<ALMIESVideoPlayerExtraViewProtocol> bottomGaussianBlurView;
 - (BOOL)enableHDR;
 - (void)setVideoControllerPlaybackRate:(double)arg0;
 @end
