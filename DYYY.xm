@@ -11382,6 +11382,10 @@ static Class tabBarButtonClass = nil;
 
 - (void)didMoveToWindow {
     %orig;
+    if (self.window && [self isKindOfClass:UIButton.class]) {
+        [DYYYUtils fixOverlappingCommentToolbarButtonForCandidateView:self];
+    }
+
     static Class voiceSearchEntranceClass = nil;
     if (!voiceSearchEntranceClass) {
         voiceSearchEntranceClass = NSClassFromString(@"AWEVoiceSearchEntranceView");
@@ -11444,6 +11448,10 @@ static Class tabBarButtonClass = nil;
 
 - (void)layoutSubviews {
     %orig;
+
+    if ([self isKindOfClass:UIButton.class]) {
+        [DYYYUtils fixOverlappingCommentToolbarButtonForCandidateView:self];
+    }
 
     static Class commentInputContainerClass = nil;
     if (!commentInputContainerClass) {

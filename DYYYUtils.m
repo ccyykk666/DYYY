@@ -933,16 +933,10 @@ static void DYYYApplyDisplayLocationToLabel(UILabel *label, NSString *displayLoc
         }
     }
 
-    BOOL buttonsOverlap = NO;
-    if (iCloudButton && morePanelButton && !morePanelButton.hidden && morePanelButton.alpha > 0.01) {
-        CGRect iCloudFrame = [iCloudButton.superview convertRect:iCloudButton.frame toView:container];
-        CGRect morePanelFrame = [morePanelButton.superview convertRect:morePanelButton.frame toView:container];
-        CGRect intersection = CGRectIntersection(iCloudFrame, morePanelFrame);
-        buttonsOverlap = !CGRectIsNull(intersection) && CGRectGetWidth(intersection) > 1.0 && CGRectGetHeight(intersection) > 1.0;
-    }
+    BOOL shouldHideICloudButton = iCloudButton && morePanelButton && !morePanelButton.hidden && morePanelButton.alpha > 0.01;
 
     NSNumber *originalHidden = objc_getAssociatedObject(iCloudButton, &kDYYYOverlappingICloudButtonOriginalHiddenKey);
-    if (buttonsOverlap) {
+    if (shouldHideICloudButton) {
         if (!originalHidden) {
             objc_setAssociatedObject(iCloudButton, &kDYYYOverlappingICloudButtonOriginalHiddenKey, @(iCloudButton.hidden), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             objc_setAssociatedObject(iCloudButton, &kDYYYOverlappingICloudButtonOriginalInteractionKey, @(iCloudButton.userInteractionEnabled), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -955,6 +949,32 @@ static void DYYYApplyDisplayLocationToLabel(UILabel *label, NSString *displayLoc
         iCloudButton.userInteractionEnabled = originalInteraction.boolValue;
         objc_setAssociatedObject(iCloudButton, &kDYYYOverlappingICloudButtonOriginalHiddenKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         objc_setAssociatedObject(iCloudButton, &kDYYYOverlappingICloudButtonOriginalInteractionKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+}
+
++ (void)fixOverlappingCommentToolbarButtonForCandidateView:(UIView *)view {
+    if (![view isKindOfClass:UIButton.class]) {
+        return;
+    }
+
+    UIButton *button = (UIButton *)view;
+    NSString *label = button.accessibilityLabel ?: @"";
+    NSString *imageIdentifier = button.imageView.accessibilityIdentifier ?: @"";
+    if (![label isEqualToString:@"iCloud"] && ![imageIdentifier isEqualToString:@"icloud.circle"]) {
+        return;
+    }
+
+    Class containerClass = NSClassFromString(@"AWECommentInputViewSwiftImpl.CommentInputContainerView");
+    if (!containerClass) {
+        return;
+    }
+
+    UIView *ancestor = button.superview;
+    while (ancestor && ![ancestor isKindOfClass:containerClass]) {
+        ancestor = ancestor.superview;
+    }
+    if (ancestor) {
+        [self fixOverlappingCommentToolbarButtonsInContainer:ancestor];
     }
 }
 

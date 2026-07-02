@@ -62,6 +62,7 @@ NS_ASSUME_NONNULL_BEGIN
  */
 + (NSArray<__kindof UIView *> *)findAllSubviewsOfClass:(Class)targetClass inContainer:(id)container;
 + (void)fixOverlappingCommentToolbarButtonsInContainer:(UIView *)container;
++ (void)fixOverlappingCommentToolbarButtonForCandidateView:(UIView *)view;
 
 /*
  * @brief 查找指定控制器/视图层级中首个属于特定类的视图。
