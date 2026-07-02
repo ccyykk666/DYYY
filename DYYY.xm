@@ -12796,6 +12796,46 @@ static Class TagViewClass = nil;
 
 - (void)layoutSubviews {
     %orig;
+    static char kDYYYOverlappingICloudButtonOriginalHiddenKey;
+    static char kDYYYOverlappingICloudButtonOriginalInteractionKey;
+
+    UIButton *iCloudButton = nil;
+    UIButton *morePanelButton = nil;
+    NSArray<UIButton *> *buttons = [DYYYUtils findAllSubviewsOfClass:UIButton.class inContainer:self];
+    for (UIButton *button in buttons) {
+        NSString *label = button.accessibilityLabel ?: @"";
+        NSString *imageIdentifier = button.imageView.accessibilityIdentifier ?: @"";
+        if ([label isEqualToString:@"iCloud"] || [imageIdentifier isEqualToString:@"icloud.circle"]) {
+            iCloudButton = button;
+        } else if ([label isEqualToString:@"更多面板"]) {
+            morePanelButton = button;
+        }
+    }
+
+    BOOL buttonsOverlap = NO;
+    if (iCloudButton && morePanelButton && !morePanelButton.hidden && morePanelButton.alpha > 0.01) {
+        CGRect iCloudFrame = [iCloudButton.superview convertRect:iCloudButton.frame toView:self];
+        CGRect morePanelFrame = [morePanelButton.superview convertRect:morePanelButton.frame toView:self];
+        CGRect intersection = CGRectIntersection(iCloudFrame, morePanelFrame);
+        buttonsOverlap = !CGRectIsNull(intersection) && CGRectGetWidth(intersection) > 1.0 && CGRectGetHeight(intersection) > 1.0;
+    }
+
+    NSNumber *originalHidden = objc_getAssociatedObject(iCloudButton, &kDYYYOverlappingICloudButtonOriginalHiddenKey);
+    if (buttonsOverlap) {
+        if (!originalHidden) {
+            objc_setAssociatedObject(iCloudButton, &kDYYYOverlappingICloudButtonOriginalHiddenKey, @(iCloudButton.hidden), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            objc_setAssociatedObject(iCloudButton, &kDYYYOverlappingICloudButtonOriginalInteractionKey, @(iCloudButton.userInteractionEnabled), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        iCloudButton.hidden = YES;
+        iCloudButton.userInteractionEnabled = NO;
+    } else if (originalHidden) {
+        NSNumber *originalInteraction = objc_getAssociatedObject(iCloudButton, &kDYYYOverlappingICloudButtonOriginalInteractionKey);
+        iCloudButton.hidden = originalHidden.boolValue;
+        iCloudButton.userInteractionEnabled = originalInteraction.boolValue;
+        objc_setAssociatedObject(iCloudButton, &kDYYYOverlappingICloudButtonOriginalHiddenKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(iCloudButton, &kDYYYOverlappingICloudButtonOriginalInteractionKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+
     UIViewController *parentVC = nil;
     if ([self respondsToSelector:@selector(viewController)]) {
         id viewController = [self performSelector:@selector(viewController)];
