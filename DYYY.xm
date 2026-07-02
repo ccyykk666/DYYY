@@ -11358,6 +11358,8 @@ static char kDYYYSystemTabBarMutationKey;
 
 %end
 
+%end
+
 %hook AWECommentInputBackgroundView
 - (void)layoutSubviews {
     %orig;
