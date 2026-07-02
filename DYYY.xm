@@ -13206,6 +13206,32 @@ static void findTargetViewInView(UIView *view) {
     }
 }
 
+%group DYYYVoiceSearchEntranceGroup
+
+%hook AWEVoiceSearchEntranceView
+
+- (void)setHidden:(BOOL)hidden {
+    %orig(DYYYGetBool(@"DYYYHideKeyboardAI") ? YES : hidden);
+}
+
+- (void)didMoveToWindow {
+    %orig;
+    if (self.window && DYYYGetBool(@"DYYYHideKeyboardAI")) {
+        self.hidden = YES;
+    }
+}
+
+- (void)layoutSubviews {
+    %orig;
+    if (DYYYGetBool(@"DYYYHideKeyboardAI")) {
+        self.hidden = YES;
+    }
+}
+
+%end
+
+%end
+
 %ctor {
     [[NSUserDefaults standardUserDefaults] registerDefaults:@{
         @"DYYYDisableFeedNowPlayingInfo" : @YES
@@ -13216,6 +13242,11 @@ static void findTargetViewInView(UIView *view) {
     Class interactionBaseLabelClass = objc_getClass("AWECommentSwiftBizUI.CommentInteractionBaseLabel");
     if (interactionBaseLabelClass) {
         %init(DYYYCommentExactTimeGroup, AWECommentSwiftBizUI_CommentInteractionBaseLabel = interactionBaseLabelClass);
+    }
+
+    Class voiceSearchEntranceClass = objc_getClass("AWEVoiceSearchEntranceView");
+    if (voiceSearchEntranceClass) {
+        %init(DYYYVoiceSearchEntranceGroup, AWEVoiceSearchEntranceView = voiceSearchEntranceClass);
     }
     
     Class imMenuComponentClass = objc_getClass("AWEIMCustomMenuComponent");
