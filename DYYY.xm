@@ -10608,6 +10608,7 @@ static char kDYYYInstagramOriginalBackgroundColorKey;
 static char kDYYYInstagramOriginalOpaqueKey;
 static char kDYYYInstagramFakeTabBarOriginalHiddenKey;
 static char kDYYYInstagramFakeTabBarOriginalInteractionKey;
+static char kDYYYInstagramTabBarVisibilityMutationKey;
 static const NSInteger kDYYYInstagramTabBarTintTag = 9217;
 
 + (void)initialize {
@@ -10672,6 +10673,10 @@ static const NSInteger kDYYYInstagramTabBarTintTag = 9217;
     }
 
     NSString *label = button.accessibilityLabel ?: @"";
+    if (label.length == 0) {
+        UILabel *titleLabel = [DYYYUtils findSubviewOfClass:UILabel.class inContainer:button];
+        label = titleLabel.text ?: @"";
+    }
     NSString *symbolName = @"circle.grid.2x2";
     NSString *selectedSymbolName = @"circle.grid.2x2.fill";
     if ([label isEqualToString:@"首页"]) {
@@ -10751,6 +10756,11 @@ static const NSInteger kDYYYInstagramTabBarTintTag = 9217;
     if (!objc_getAssociatedObject(self, &kDYYYInstagramOriginalBackgroundColorKey)) {
         objc_setAssociatedObject(self, &kDYYYInstagramOriginalBackgroundColorKey, self.backgroundColor ?: UIColor.clearColor, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         objc_setAssociatedObject(self, &kDYYYInstagramOriginalOpaqueKey, @(self.opaque), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    if (self.hidden) {
+        objc_setAssociatedObject(self, &kDYYYInstagramTabBarVisibilityMutationKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        self.hidden = NO;
+        objc_setAssociatedObject(self, &kDYYYInstagramTabBarVisibilityMutationKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
     self.backgroundColor = UIColor.clearColor;
     self.opaque = NO;
@@ -10975,7 +10985,13 @@ static const NSInteger kDYYYInstagramTabBarTintTag = 9217;
 }
 
 - (void)setHidden:(BOOL)hidden {
-    %orig(hidden);
+    if ([objc_getAssociatedObject(self, &kDYYYInstagramTabBarVisibilityMutationKey) boolValue]) {
+        %orig(hidden);
+        return;
+    }
+
+    BOOL useInstagramStyle = [self dyyy_shouldUseInstagramTabBarStyle];
+    %orig(useInstagramStyle ? NO : hidden);
 
     BOOL disableHomeRefresh = DYYYGetBool(@"DYYYDisableHomeRefresh");
     BOOL enableFullScreen = DYYYGetBool(@"DYYYEnableFullScreen");
@@ -11045,7 +11061,11 @@ static const NSInteger kDYYYInstagramTabBarTintTag = 9217;
         }
     }
 
-    [self dyyy_applyInstagramTabBarStyle];
+    if (useInstagramStyle) {
+        [self dyyy_applyInstagramTabBarStyle];
+    } else {
+        [self dyyy_restoreInstagramTabBarStyle];
+    }
 }
 
 %end
