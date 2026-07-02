@@ -256,7 +256,6 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 
 @interface AWENormalModeTabBarGeneralButton : UIButton
 @property(nonatomic) NSInteger status;
-@property(nonatomic, weak) id delegate;
 @end
 
 @interface AWEHPTopTabItemBadgeContentView : UIView
@@ -450,10 +449,12 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @property(nonatomic, assign, readonly) UITabBarController *yy_viewController;
 @property(retain, nonatomic) AWETabBarSkinContainerView *skinContainerView;
 - (void)initializeOriginalTabBarHeight;
-- (AWEFakeTabBar *)dyyy_fakeSystemTabBar;
-- (BOOL)dyyy_shouldUseIntegratedSystemTabBar;
-- (void)dyyy_restoreIntegratedSystemTabBar;
-- (void)dyyy_applyIntegratedSystemTabBarIfAvailable;
+- (BOOL)dyyy_shouldUseInstagramTabBarStyle;
+- (BOOL)dyyy_viewIsInsideBadgeContainer:(UIView *)view root:(UIView *)root;
+- (void)dyyy_setOriginalButtonContentHidden:(BOOL)hidden inView:(UIView *)view root:(UIView *)root;
+- (void)dyyy_updateInstagramIconForButton:(AWENormalModeTabBarGeneralButton *)button;
+- (void)dyyy_restoreInstagramTabBarStyle;
+- (void)dyyy_applyInstagramTabBarStyle;
 @end
 
 @interface AWEPlayInteractionListenFeedView : UIView

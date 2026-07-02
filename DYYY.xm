@@ -28,7 +28,6 @@
 #import "DYYYFloatClearButton.h"
 #import "DYYYFloatSpeedButton.h"
 #import "DYYYSettingViewController.h"
-#import "DYYYSystemTabBarDelegate.h"
 #import "DYYYToast.h"
 #import "DYYYUtils.h"
 
@@ -10602,12 +10601,14 @@ static Class plusButtonClass = nil;
 static Class plusInnerButtonClass = nil;
 static Class tabBarButtonClass = nil;
 static Class tabBarBlurViewClass = nil;
-static char kDYYYSystemTabBarDelegateKey;
-static char kDYYYSystemTabBarItemsKey;
-static char kDYYYSystemTabBarOriginalItemsKey;
-static char kDYYYSystemTabBarMutationKey;
-static char kDYYYFakeTabBarPlatterOriginalHiddenKey;
-static char kDYYYFakeTabBarPlatterSuppressedKey;
+static char kDYYYInstagramTabBarBlurKey;
+static char kDYYYInstagramTabBarIconKey;
+static char kDYYYInstagramOriginalHiddenKey;
+static char kDYYYInstagramOriginalBackgroundColorKey;
+static char kDYYYInstagramOriginalOpaqueKey;
+static char kDYYYInstagramFakeTabBarOriginalHiddenKey;
+static char kDYYYInstagramFakeTabBarOriginalInteractionKey;
+static const NSInteger kDYYYInstagramTabBarTintTag = 9217;
 
 + (void)initialize {
     if (self == [%c(AWENormalModeTabBar) class]) {
@@ -10622,223 +10623,181 @@ static char kDYYYFakeTabBarPlatterSuppressedKey;
 }
 
 %new
-- (AWEFakeTabBar *)dyyy_fakeSystemTabBar {
-    Class fakeTabBarClass = NSClassFromString(@"AWEFakeTabBar");
-    if (!fakeTabBarClass || !self.superview) {
-        return nil;
+- (BOOL)dyyy_shouldUseInstagramTabBarStyle {
+    if (@available(iOS 13.0, *)) {
+        return DYYYGetBool(@"DYYYHidePlusButton") && !DYYYGetBool(@"DYYYHideBottomBg") && !DYYYGetBool(@"DYYYEnableFullScreen");
     }
+    return NO;
+}
 
-    for (UIView *sibling in self.superview.subviews) {
-        if (sibling == self) {
+%new
+- (BOOL)dyyy_viewIsInsideBadgeContainer:(UIView *)view root:(UIView *)root {
+    for (UIView *current = view; current && current != root; current = current.superview) {
+        NSString *className = NSStringFromClass(current.class);
+        if ([className containsString:@"Badge"] || [className containsString:@"Dot"]) {
+            return YES;
+        }
+    }
+    return NO;
+}
+
+%new
+- (void)dyyy_setOriginalButtonContentHidden:(BOOL)hidden inView:(UIView *)view root:(UIView *)root {
+    for (UIView *subview in view.subviews) {
+        UIImageView *instagramIcon = objc_getAssociatedObject(root, &kDYYYInstagramTabBarIconKey);
+        if (subview == instagramIcon || [self dyyy_viewIsInsideBadgeContainer:subview root:root]) {
             continue;
         }
 
-        NSString *className = NSStringFromClass(sibling.class);
-        if ([sibling isKindOfClass:fakeTabBarClass] || [className containsString:@"TabBarContainer"]) {
-            AWEFakeTabBar *fakeTabBar = [DYYYUtils findSubviewOfClass:fakeTabBarClass inContainer:sibling];
-            if (fakeTabBar) {
-                return fakeTabBar;
+        if ([subview isKindOfClass:UILabel.class] || [subview isKindOfClass:UIImageView.class]) {
+            NSNumber *originalHidden = objc_getAssociatedObject(subview, &kDYYYInstagramOriginalHiddenKey);
+            if (hidden) {
+                if (!originalHidden) {
+                    objc_setAssociatedObject(subview, &kDYYYInstagramOriginalHiddenKey, @(subview.hidden), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                }
+                subview.hidden = YES;
+            } else if (originalHidden) {
+                subview.hidden = originalHidden.boolValue;
+                objc_setAssociatedObject(subview, &kDYYYInstagramOriginalHiddenKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             }
         }
+        [self dyyy_setOriginalButtonContentHidden:hidden inView:subview root:root];
     }
-
-    return nil;
 }
 
 %new
-- (BOOL)dyyy_shouldUseIntegratedSystemTabBar {
-    return [NSProcessInfo processInfo].operatingSystemVersion.majorVersion >= 26 && NSClassFromString(@"UIGlassEffect") != nil && DYYYGetBool(@"DYYYHidePlusButton") &&
-           !DYYYGetBool(@"DYYYHideBottomBg") && !DYYYGetBool(@"DYYYEnableFullScreen");
-}
-
-%new
-- (void)dyyy_restoreIntegratedSystemTabBar {
-    AWEFakeTabBar *fakeTabBar = [self dyyy_fakeSystemTabBar];
-    if (fakeTabBar) {
-        objc_setAssociatedObject(fakeTabBar, &kDYYYFakeTabBarPlatterSuppressedKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
-    for (UIView *subview in fakeTabBar.subviews) {
-        if (![NSStringFromClass(subview.class) containsString:@"TabBarItemPlatterView"]) {
-            continue;
-        }
-
-        NSNumber *originalHidden = objc_getAssociatedObject(subview, &kDYYYFakeTabBarPlatterOriginalHiddenKey);
-        if (originalHidden) {
-            subview.hidden = originalHidden.boolValue;
-            objc_setAssociatedObject(subview, &kDYYYFakeTabBarPlatterOriginalHiddenKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        }
-    }
-
-    DYYYSystemTabBarDelegate *delegateProxy = objc_getAssociatedObject(self, &kDYYYSystemTabBarDelegateKey);
-    if (delegateProxy && self.delegate == delegateProxy) {
-        self.delegate = delegateProxy.originalDelegate;
-    }
-
-    NSArray<UITabBarItem *> *originalItems = objc_getAssociatedObject(self, &kDYYYSystemTabBarOriginalItemsKey);
-    if (originalItems) {
-        objc_setAssociatedObject(self, &kDYYYSystemTabBarMutationKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        [self setItems:(originalItems.count > 0 ? originalItems : nil) animated:NO];
-        objc_setAssociatedObject(self, &kDYYYSystemTabBarMutationKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
-
-    objc_setAssociatedObject(self, &kDYYYSystemTabBarDelegateKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    objc_setAssociatedObject(self, &kDYYYSystemTabBarItemsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    objc_setAssociatedObject(self, &kDYYYSystemTabBarOriginalItemsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-}
-
-%new
-- (void)dyyy_applyIntegratedSystemTabBarIfAvailable {
-    if (objc_getAssociatedObject(self, &kDYYYSystemTabBarMutationKey)) {
+- (void)dyyy_updateInstagramIconForButton:(AWENormalModeTabBarGeneralButton *)button {
+    if (!button) {
         return;
     }
 
-    if (![self dyyy_shouldUseIntegratedSystemTabBar]) {
-        [self dyyy_restoreIntegratedSystemTabBar];
-        return;
+    NSString *label = button.accessibilityLabel ?: @"";
+    NSString *symbolName = @"circle.grid.2x2";
+    NSString *selectedSymbolName = @"circle.grid.2x2.fill";
+    if ([label isEqualToString:@"首页"]) {
+        symbolName = @"house";
+        selectedSymbolName = @"house.fill";
+    } else if ([label containsString:@"朋友"]) {
+        symbolName = @"person.2";
+        selectedSymbolName = @"person.2.fill";
+    } else if ([label containsString:@"消息"]) {
+        symbolName = @"message";
+        selectedSymbolName = @"message.fill";
+    } else if ([label isEqualToString:@"我"]) {
+        symbolName = @"person.crop.circle";
+        selectedSymbolName = @"person.crop.circle.fill";
+    } else if ([label containsString:@"商城"]) {
+        symbolName = @"bag";
+        selectedSymbolName = @"bag.fill";
     }
 
-    NSMutableArray<AWENormalModeTabBarGeneralButton *> *sourceButtons = [NSMutableArray array];
+    UIImageView *iconView = objc_getAssociatedObject(button, &kDYYYInstagramTabBarIconKey);
+    if (!iconView) {
+        iconView = [[UIImageView alloc] initWithFrame:CGRectZero];
+        iconView.userInteractionEnabled = NO;
+        iconView.contentMode = UIViewContentModeCenter;
+        iconView.isAccessibilityElement = NO;
+        [button addSubview:iconView];
+        objc_setAssociatedObject(button, &kDYYYInstagramTabBarIconKey, iconView, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+
+    BOOL selected = button.status == 2;
+    UIImageSymbolConfiguration *configuration = [UIImageSymbolConfiguration configurationWithPointSize:22.0 weight:(selected ? UIImageSymbolWeightSemibold : UIImageSymbolWeightRegular)];
+    UIImage *image = [[UIImage systemImageNamed:(selected ? selectedSymbolName : symbolName)] imageByApplyingSymbolConfiguration:configuration];
+    iconView.image = [image imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate];
+    iconView.tintColor = selected ? UIColor.whiteColor : [UIColor colorWithWhite:0.72 alpha:1.0];
+    iconView.frame = button.bounds;
+    iconView.hidden = NO;
+    [iconView.layer removeAllAnimations];
+    [button bringSubviewToFront:iconView];
+    [self dyyy_setOriginalButtonContentHidden:YES inView:button root:button];
+}
+
+%new
+- (void)dyyy_restoreInstagramTabBarStyle {
+    UIVisualEffectView *blurView = objc_getAssociatedObject(self, &kDYYYInstagramTabBarBlurKey);
+    [blurView removeFromSuperview];
+    objc_setAssociatedObject(self, &kDYYYInstagramTabBarBlurKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+
+    UIColor *originalBackgroundColor = objc_getAssociatedObject(self, &kDYYYInstagramOriginalBackgroundColorKey);
+    NSNumber *originalOpaque = objc_getAssociatedObject(self, &kDYYYInstagramOriginalOpaqueKey);
+    if (originalBackgroundColor) {
+        self.backgroundColor = originalBackgroundColor;
+        objc_setAssociatedObject(self, &kDYYYInstagramOriginalBackgroundColorKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    if (originalOpaque) {
+        self.opaque = originalOpaque.boolValue;
+        objc_setAssociatedObject(self, &kDYYYInstagramOriginalOpaqueKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+
     for (UIView *subview in self.subviews) {
-        if ([subview isKindOfClass:generalButtonClass] && !subview.hidden) {
-            [sourceButtons addObject:(AWENormalModeTabBarGeneralButton *)subview];
+        if (![subview isKindOfClass:generalButtonClass]) {
+            continue;
         }
+        UIImageView *iconView = objc_getAssociatedObject(subview, &kDYYYInstagramTabBarIconKey);
+        [iconView removeFromSuperview];
+        objc_setAssociatedObject(subview, &kDYYYInstagramTabBarIconKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        [self dyyy_setOriginalButtonContentHidden:NO inView:subview root:subview];
     }
-    [sourceButtons sortUsingComparator:^NSComparisonResult(UIView *left, UIView *right) {
-      return [@(left.frame.origin.x) compare:@(right.frame.origin.x)];
-    }];
+}
 
-    if (sourceButtons.count < 2) {
-        [self dyyy_restoreIntegratedSystemTabBar];
+%new
+- (void)dyyy_applyInstagramTabBarStyle {
+    if (![self dyyy_shouldUseInstagramTabBarStyle]) {
+        [self dyyy_restoreInstagramTabBarStyle];
         return;
     }
 
-    NSMutableArray<NSString *> *titles = [NSMutableArray arrayWithCapacity:sourceButtons.count];
-    NSMutableArray<NSString *> *symbolNames = [NSMutableArray arrayWithCapacity:sourceButtons.count];
-    NSMutableArray<NSString *> *selectedSymbolNames = [NSMutableArray arrayWithCapacity:sourceButtons.count];
-    for (AWENormalModeTabBarGeneralButton *button in sourceButtons) {
-        NSString *title = button.accessibilityLabel ?: @"";
-        NSString *customTitle = nil;
-        NSString *symbolName = @"circle.grid.2x2";
-        NSString *selectedSymbolName = @"circle.grid.2x2.fill";
-        if ([title isEqualToString:@"首页"]) {
-            customTitle = DYYYGetString(@"DYYYIndexTitle");
-            symbolName = @"house";
-            selectedSymbolName = @"house.fill";
-        } else if ([title isEqualToString:@"朋友"]) {
-            customTitle = DYYYGetString(@"DYYYFriendsTitle");
-            symbolName = @"person.2";
-            selectedSymbolName = @"person.2.fill";
-        } else if ([title containsString:@"消息"]) {
-            customTitle = DYYYGetString(@"DYYYMsgTitle");
-            symbolName = @"message";
-            selectedSymbolName = @"message.fill";
-        } else if ([title isEqualToString:@"我"]) {
-            customTitle = DYYYGetString(@"DYYYSelfTitle");
-            symbolName = @"person.crop.circle";
-            selectedSymbolName = @"person.crop.circle.fill";
-        } else if ([title containsString:@"商城"]) {
-            symbolName = @"bag";
-            selectedSymbolName = @"bag.fill";
-        }
-        [titles addObject:(customTitle.length > 0 ? customTitle : title)];
-        [symbolNames addObject:symbolName];
-        [selectedSymbolNames addObject:selectedSymbolName];
+    if (!objc_getAssociatedObject(self, &kDYYYInstagramOriginalBackgroundColorKey)) {
+        objc_setAssociatedObject(self, &kDYYYInstagramOriginalBackgroundColorKey, self.backgroundColor ?: UIColor.clearColor, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(self, &kDYYYInstagramOriginalOpaqueKey, @(self.opaque), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
-
-    NSArray<UITabBarItem *> *systemItems = objc_getAssociatedObject(self, &kDYYYSystemTabBarItemsKey);
-    BOOL needsNewItems = systemItems.count != titles.count;
-    if (!needsNewItems) {
-        for (NSUInteger index = 0; index < titles.count; index++) {
-            UITabBarItem *item = systemItems[index];
-            if (item.title.length > 0 || ![item.accessibilityLabel isEqualToString:titles[index]] || !item.image || !item.selectedImage) {
-                needsNewItems = YES;
-                break;
-            }
-        }
-    }
-
-    if (needsNewItems) {
-        if (!objc_getAssociatedObject(self, &kDYYYSystemTabBarOriginalItemsKey)) {
-            objc_setAssociatedObject(self, &kDYYYSystemTabBarOriginalItemsKey, self.items ?: @[], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        }
-
-        NSMutableArray<UITabBarItem *> *newItems = [NSMutableArray arrayWithCapacity:titles.count];
-        UIImageSymbolConfiguration *symbolConfiguration = [UIImageSymbolConfiguration configurationWithPointSize:20.0 weight:UIImageSymbolWeightSemibold];
-        for (NSUInteger index = 0; index < titles.count; index++) {
-            UIImage *image = [[UIImage systemImageNamed:symbolNames[index]] imageByApplyingSymbolConfiguration:symbolConfiguration];
-            UIImage *selectedImage = [[UIImage systemImageNamed:selectedSymbolNames[index]] imageByApplyingSymbolConfiguration:symbolConfiguration];
-            UITabBarItem *item = [[UITabBarItem alloc] initWithTitle:nil image:image selectedImage:selectedImage];
-            item.tag = index;
-            item.accessibilityLabel = titles[index];
-            item.accessibilityIdentifier = [NSString stringWithFormat:@"DYYYSystemTabBarItem%lu", (unsigned long)index];
-            [newItems addObject:item];
-        }
-        systemItems = [newItems copy];
-
-        objc_setAssociatedObject(self, &kDYYYSystemTabBarMutationKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        [self setItems:systemItems animated:NO];
-        objc_setAssociatedObject(self, &kDYYYSystemTabBarMutationKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        objc_setAssociatedObject(self, &kDYYYSystemTabBarItemsKey, systemItems, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
-
-    DYYYSystemTabBarDelegate *delegateProxy = objc_getAssociatedObject(self, &kDYYYSystemTabBarDelegateKey);
-    if (!delegateProxy) {
-        delegateProxy = [[DYYYSystemTabBarDelegate alloc] init];
-        delegateProxy.sourceTabBar = self;
-        delegateProxy.originalDelegate = self.delegate;
-        objc_setAssociatedObject(self, &kDYYYSystemTabBarDelegateKey, delegateProxy, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    } else if (self.delegate != delegateProxy) {
-        delegateProxy.originalDelegate = self.delegate;
-    }
-    delegateProxy.sourceButtons = sourceButtons;
-    self.delegate = delegateProxy;
-
-    NSInteger pendingIndex = delegateProxy.pendingSelectionIndex;
-    BOOL pendingExpired = pendingIndex != NSNotFound && [NSProcessInfo processInfo].systemUptime > delegateProxy.pendingSelectionDeadline;
-    if (pendingExpired) {
-        delegateProxy.pendingSelectionIndex = NSNotFound;
-        pendingIndex = NSNotFound;
-    }
-
-    if (pendingIndex != NSNotFound && pendingIndex >= 0 && (NSUInteger)pendingIndex < systemItems.count && (NSUInteger)pendingIndex < sourceButtons.count) {
-        self.selectedItem = systemItems[pendingIndex];
-        if (sourceButtons[pendingIndex].status == 2) {
-            delegateProxy.pendingSelectionIndex = NSNotFound;
-        }
-    } else {
-        NSUInteger selectedIndex = [sourceButtons indexOfObjectPassingTest:^BOOL(AWENormalModeTabBarGeneralButton *button, NSUInteger index, BOOL *stop) {
-          return button.status == 2;
-        }];
-        if (selectedIndex != NSNotFound && selectedIndex < systemItems.count) {
-            self.selectedItem = systemItems[selectedIndex];
-        }
-    }
-
-    AWEFakeTabBar *fakeTabBar = [self dyyy_fakeSystemTabBar];
-    if (fakeTabBar) {
-        objc_setAssociatedObject(fakeTabBar, &kDYYYFakeTabBarPlatterSuppressedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
-    for (UIView *subview in fakeTabBar.subviews) {
-        if (![NSStringFromClass(subview.class) containsString:@"TabBarItemPlatterView"]) {
-            continue;
-        }
-        if (!objc_getAssociatedObject(subview, &kDYYYFakeTabBarPlatterOriginalHiddenKey)) {
-            objc_setAssociatedObject(subview, &kDYYYFakeTabBarPlatterOriginalHiddenKey, @(subview.hidden), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        }
-        subview.hidden = YES;
-    }
-
     self.backgroundColor = UIColor.clearColor;
     self.opaque = NO;
     self.skinContainerView.hidden = YES;
 
+    UIVisualEffectView *blurView = objc_getAssociatedObject(self, &kDYYYInstagramTabBarBlurKey);
+    if (!blurView) {
+        UIBlurEffect *effect = [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemUltraThinMaterialDark];
+        blurView = [[UIVisualEffectView alloc] initWithEffect:effect];
+        blurView.userInteractionEnabled = NO;
+        blurView.isAccessibilityElement = NO;
+
+        UIView *tintView = [[UIView alloc] initWithFrame:blurView.bounds];
+        tintView.tag = kDYYYInstagramTabBarTintTag;
+        tintView.userInteractionEnabled = NO;
+        tintView.backgroundColor = [UIColor colorWithWhite:0.0 alpha:0.06];
+        [blurView.contentView addSubview:tintView];
+
+        objc_setAssociatedObject(self, &kDYYYInstagramTabBarBlurKey, blurView, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        [self insertSubview:blurView atIndex:0];
+    }
+    blurView.frame = self.bounds;
+    blurView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    blurView.hidden = NO;
+    UIView *tintView = [blurView.contentView viewWithTag:kDYYYInstagramTabBarTintTag];
+    tintView.frame = blurView.bounds;
+    [self sendSubviewToBack:blurView];
+
     for (UIView *subview in self.subviews) {
-        BOOL containsDouyinBlur = tabBarBlurViewClass && [DYYYUtils containsSubviewOfClass:tabBarBlurViewClass inContainer:subview];
-        if (containsDouyinBlur || [subview isKindOfClass:generalButtonClass]) {
+        if (subview == blurView) {
+            continue;
+        }
+
+        BOOL isGeneralButton = [subview isKindOfClass:generalButtonClass];
+        BOOL isPlusButton = [subview isKindOfClass:plusContainerButtonClass] || [subview isKindOfClass:plusButtonClass] || [subview isKindOfClass:plusInnerButtonClass];
+        BOOL isOriginalBackground = [subview isKindOfClass:barBackgroundClass] ||
+                                    (tabBarBlurViewClass && [DYYYUtils containsSubviewOfClass:tabBarBlurViewClass inContainer:subview]) ||
+                                    ([subview isMemberOfClass:UIView.class] && ![DYYYUtils containsSubviewOfClass:generalButtonClass inContainer:subview] &&
+                                     fabs(subview.bounds.size.height - self.bounds.size.height) < 0.5);
+        if (isGeneralButton && !subview.hidden) {
+            [self dyyy_updateInstagramIconForButton:(AWENormalModeTabBarGeneralButton *)subview];
+        } else if ([subview isKindOfClass:tabBarButtonClass] || isOriginalBackground) {
             subview.hidden = YES;
-        } else if ([subview isKindOfClass:tabBarButtonClass]) {
-            subview.hidden = NO;
-            subview.userInteractionEnabled = YES;
+            subview.userInteractionEnabled = NO;
+        } else if (isPlusButton && DYYYGetBool(@"DYYYHidePlusButton")) {
+            subview.hidden = YES;
+            subview.userInteractionEnabled = NO;
         }
     }
 }
@@ -10896,8 +10855,6 @@ static char kDYYYFakeTabBarPlatterSuppressedKey;
     BOOL hideMe = DYYYGetBool(@"DYYYHideMyButton");
     BOOL hidePlus = DYYYGetBool(@"DYYYHidePlusButton");
     BOOL isPad = (UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPad);
-    BOOL useIntegratedSystemTabBar = [self dyyy_shouldUseIntegratedSystemTabBar];
-
     NSMutableArray *visibleButtons = [NSMutableArray array];
     UIView *ipadContainerView = nil;
 
@@ -10917,8 +10874,8 @@ static char kDYYYFakeTabBarPlatterSuppressedKey;
                 [visibleButtons addObject:subview];
             }
         } else if ([subview isKindOfClass:tabBarButtonClass]) {
-            subview.userInteractionEnabled = useIntegratedSystemTabBar;
-            subview.hidden = !useIntegratedSystemTabBar;
+            subview.userInteractionEnabled = NO;
+            subview.hidden = YES;
         } else if (isPad && !ipadContainerView && [subview isMemberOfClass:UIView.class] && fabs(subview.frame.size.width - self.bounds.size.width) > 0.1) {
             ipadContainerView = subview;
         }
@@ -11014,7 +10971,7 @@ static char kDYYYFakeTabBarPlatterSuppressedKey;
         }
     }
 
-    [self dyyy_applyIntegratedSystemTabBarIfAvailable];
+    [self dyyy_applyInstagramTabBarStyle];
 }
 
 - (void)setHidden:(BOOL)hidden {
@@ -11088,24 +11045,45 @@ static char kDYYYFakeTabBarPlatterSuppressedKey;
         }
     }
 
-    [self dyyy_applyIntegratedSystemTabBarIfAvailable];
+    [self dyyy_applyInstagramTabBarStyle];
 }
 
 %end
 
 %hook AWEFakeTabBar
 
-- (void)layoutSubviews {
-    %orig;
-
-    if (![objc_getAssociatedObject(self, &kDYYYFakeTabBarPlatterSuppressedKey) boolValue]) {
+- (void)setHidden:(BOOL)hidden {
+    BOOL useInstagramStyle = DYYYGetBool(@"DYYYHidePlusButton") && !DYYYGetBool(@"DYYYHideBottomBg") && !DYYYGetBool(@"DYYYEnableFullScreen");
+    if (useInstagramStyle) {
+        if (!objc_getAssociatedObject(self, &kDYYYInstagramFakeTabBarOriginalHiddenKey)) {
+            objc_setAssociatedObject(self, &kDYYYInstagramFakeTabBarOriginalHiddenKey, @(hidden), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            objc_setAssociatedObject(self, &kDYYYInstagramFakeTabBarOriginalInteractionKey, @(self.userInteractionEnabled), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        %orig(YES);
+        self.userInteractionEnabled = NO;
         return;
     }
 
-    for (UIView *subview in self.subviews) {
-        if ([NSStringFromClass(subview.class) containsString:@"TabBarItemPlatterView"]) {
-            subview.hidden = YES;
-        }
+    NSNumber *originalHidden = objc_getAssociatedObject(self, &kDYYYInstagramFakeTabBarOriginalHiddenKey);
+    NSNumber *originalInteraction = objc_getAssociatedObject(self, &kDYYYInstagramFakeTabBarOriginalInteractionKey);
+    if (originalHidden) {
+        %orig(originalHidden.boolValue);
+        self.userInteractionEnabled = originalInteraction.boolValue;
+        objc_setAssociatedObject(self, &kDYYYInstagramFakeTabBarOriginalHiddenKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(self, &kDYYYInstagramFakeTabBarOriginalInteractionKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    } else {
+        %orig(hidden);
+    }
+}
+
+- (void)layoutSubviews {
+    %orig;
+
+    if (DYYYGetBool(@"DYYYHidePlusButton") && !DYYYGetBool(@"DYYYHideBottomBg") && !DYYYGetBool(@"DYYYEnableFullScreen")) {
+        self.hidden = YES;
+        self.userInteractionEnabled = NO;
+    } else if (objc_getAssociatedObject(self, &kDYYYInstagramFakeTabBarOriginalHiddenKey)) {
+        self.hidden = NO;
     }
 }
 
@@ -11168,10 +11146,21 @@ static char kDYYYFakeTabBarPlatterSuppressedKey;
 - (void)setStatus:(NSInteger)status {
     %orig(status);
 
-    __weak UIView *tabBar = self.superview;
-    dispatch_async(dispatch_get_main_queue(), ^{
-      [tabBar setNeedsLayout];
-    });
+    __weak AWENormalModeTabBarGeneralButton *weakButton = self;
+    void (^updateIcon)(void) = ^{
+      AWENormalModeTabBarGeneralButton *button = weakButton;
+      AWENormalModeTabBar *tabBar = [button.superview isKindOfClass:%c(AWENormalModeTabBar)] ? (AWENormalModeTabBar *)button.superview : nil;
+      if ([tabBar dyyy_shouldUseInstagramTabBarStyle]) {
+          [UIView performWithoutAnimation:^{
+            [tabBar dyyy_updateInstagramIconForButton:button];
+          }];
+      }
+    };
+    if ([NSThread isMainThread]) {
+        updateIcon();
+    } else {
+        dispatch_async(dispatch_get_main_queue(), updateIcon);
+    }
 }
 
 %end
