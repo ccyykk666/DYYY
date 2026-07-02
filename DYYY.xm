@@ -10609,6 +10609,18 @@ static char kDYYYInstagramOriginalOpaqueKey;
 static char kDYYYInstagramFakeTabBarOriginalHiddenKey;
 static char kDYYYInstagramFakeTabBarOriginalInteractionKey;
 static char kDYYYInstagramTabBarVisibilityMutationKey;
+static char kDYYYInstagramLiveBlurSourceKey;
+static char kDYYYInstagramLiveBlurOwnerKey;
+static char kDYYYInstagramLiveBlurOriginalSuperviewKey;
+static char kDYYYInstagramLiveBlurOriginalIndexKey;
+static char kDYYYInstagramLiveBlurOriginalFrameKey;
+static char kDYYYInstagramLiveBlurOriginalHiddenKey;
+static char kDYYYInstagramLiveBlurOriginalAlphaKey;
+static char kDYYYInstagramLiveBlurOriginalInteractionKey;
+static char kDYYYInstagramLiveBlurOriginalAutoresizingKey;
+static char kDYYYInstagramLiveBlurOriginalTranslatesAutoresizingKey;
+static char kDYYYInstagramLiveBlurOriginalTransformKey;
+static char kDYYYInstagramLiveBlurOriginalConstraintsKey;
 static const NSInteger kDYYYInstagramTabBarTintTag = 9217;
 
 + (void)initialize {
@@ -10719,7 +10731,105 @@ static const NSInteger kDYYYInstagramTabBarTintTag = 9217;
 }
 
 %new
+- (void)dyyy_clearInstagramLiveBlurSourceViewForOwner:(UIViewController *)owner {
+    UIView *sourceView = objc_getAssociatedObject(self, &kDYYYInstagramLiveBlurSourceKey);
+    UIViewController *sourceOwner = objc_getAssociatedObject(self, &kDYYYInstagramLiveBlurOwnerKey);
+    if (!sourceView || (owner && sourceOwner != owner)) {
+        return;
+    }
+
+    UIView *originalSuperview = objc_getAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalSuperviewKey);
+    NSNumber *originalIndex = objc_getAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalIndexKey);
+    NSValue *originalFrame = objc_getAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalFrameKey);
+    NSNumber *originalHidden = objc_getAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalHiddenKey);
+    NSNumber *originalAlpha = objc_getAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalAlphaKey);
+    NSNumber *originalInteraction = objc_getAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalInteractionKey);
+    NSNumber *originalAutoresizing = objc_getAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalAutoresizingKey);
+    NSNumber *originalTranslatesAutoresizing = objc_getAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalTranslatesAutoresizingKey);
+    NSValue *originalTransform = objc_getAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalTransformKey);
+    NSArray<NSLayoutConstraint *> *originalConstraints = objc_getAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalConstraintsKey);
+
+    [sourceView removeFromSuperview];
+    if (originalSuperview) {
+        NSUInteger index = MIN(originalIndex.unsignedIntegerValue, originalSuperview.subviews.count);
+        [originalSuperview insertSubview:sourceView atIndex:index];
+        sourceView.transform = originalTransform.CGAffineTransformValue;
+        sourceView.frame = originalFrame.CGRectValue;
+        sourceView.hidden = originalHidden.boolValue;
+        sourceView.alpha = originalAlpha.doubleValue;
+        sourceView.userInteractionEnabled = originalInteraction.boolValue;
+        sourceView.autoresizingMask = originalAutoresizing.unsignedIntegerValue;
+        sourceView.translatesAutoresizingMaskIntoConstraints = originalTranslatesAutoresizing.boolValue;
+        for (NSLayoutConstraint *constraint in originalConstraints) {
+            if (![originalSuperview.constraints containsObject:constraint]) {
+                [originalSuperview addConstraint:constraint];
+            }
+        }
+    }
+
+    objc_setAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalSuperviewKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalIndexKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalFrameKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalHiddenKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalAlphaKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalInteractionKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalAutoresizingKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalTranslatesAutoresizingKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalTransformKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalConstraintsKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(self, &kDYYYInstagramLiveBlurSourceKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(self, &kDYYYInstagramLiveBlurOwnerKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+%new
+- (void)dyyy_setInstagramLiveBlurSourceView:(UIView *)sourceView owner:(UIViewController *)owner {
+    if (!sourceView || !sourceView.superview || !owner || sourceView == self || [self isDescendantOfView:sourceView] || ![self dyyy_shouldUseInstagramTabBarStyle]) {
+        return;
+    }
+
+    UIView *currentSourceView = objc_getAssociatedObject(self, &kDYYYInstagramLiveBlurSourceKey);
+    if (currentSourceView && currentSourceView != sourceView) {
+        [self dyyy_clearInstagramLiveBlurSourceViewForOwner:nil];
+    }
+
+    if (sourceView.superview != self) {
+        UIView *originalSuperview = sourceView.superview;
+        NSUInteger originalIndex = originalSuperview ? [originalSuperview.subviews indexOfObjectIdenticalTo:sourceView] : NSNotFound;
+        objc_setAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalSuperviewKey, originalSuperview, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalIndexKey, @(originalIndex == NSNotFound ? originalSuperview.subviews.count : originalIndex), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalFrameKey, [NSValue valueWithCGRect:sourceView.frame], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalHiddenKey, @(sourceView.hidden), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalAlphaKey, @(sourceView.alpha), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalInteractionKey, @(sourceView.userInteractionEnabled), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalAutoresizingKey, @(sourceView.autoresizingMask), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalTranslatesAutoresizingKey, @(sourceView.translatesAutoresizingMaskIntoConstraints), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalTransformKey, [NSValue valueWithCGAffineTransform:sourceView.transform], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        NSMutableArray<NSLayoutConstraint *> *sourceConstraints = [NSMutableArray array];
+        for (NSLayoutConstraint *constraint in originalSuperview.constraints) {
+            if (constraint.firstItem == sourceView || constraint.secondItem == sourceView) {
+                [sourceConstraints addObject:constraint];
+            }
+        }
+        objc_setAssociatedObject(sourceView, &kDYYYInstagramLiveBlurOriginalConstraintsKey, [sourceConstraints copy], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        [self insertSubview:sourceView atIndex:0];
+    }
+
+    objc_setAssociatedObject(self, &kDYYYInstagramLiveBlurSourceKey, sourceView, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(self, &kDYYYInstagramLiveBlurOwnerKey, owner, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    sourceView.transform = CGAffineTransformIdentity;
+    sourceView.translatesAutoresizingMaskIntoConstraints = YES;
+    sourceView.frame = self.bounds;
+    sourceView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+    sourceView.hidden = NO;
+    sourceView.alpha = 1.0;
+    sourceView.userInteractionEnabled = NO;
+    [self dyyy_applyInstagramTabBarStyle];
+}
+
+%new
 - (void)dyyy_restoreInstagramTabBarStyle {
+    [self dyyy_clearInstagramLiveBlurSourceViewForOwner:nil];
+
     UIVisualEffectView *blurView = objc_getAssociatedObject(self, &kDYYYInstagramTabBarBlurKey);
     [blurView removeFromSuperview];
     objc_setAssociatedObject(self, &kDYYYInstagramTabBarBlurKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -10787,10 +10897,17 @@ static const NSInteger kDYYYInstagramTabBarTintTag = 9217;
     blurView.hidden = NO;
     UIView *tintView = [blurView.contentView viewWithTag:kDYYYInstagramTabBarTintTag];
     tintView.frame = blurView.bounds;
-    [self sendSubviewToBack:blurView];
+    UIView *liveBlurSourceView = objc_getAssociatedObject(self, &kDYYYInstagramLiveBlurSourceKey);
+    if (liveBlurSourceView.superview == self) {
+        liveBlurSourceView.frame = self.bounds;
+        [self sendSubviewToBack:liveBlurSourceView];
+        [self insertSubview:blurView aboveSubview:liveBlurSourceView];
+    } else {
+        [self sendSubviewToBack:blurView];
+    }
 
     for (UIView *subview in self.subviews) {
-        if (subview == blurView) {
+        if (subview == blurView || subview == liveBlurSourceView) {
             continue;
         }
 
@@ -12049,6 +12166,7 @@ static const NSInteger kDYYYInstagramTabBarTintTag = 9217;
 
 - (void)viewDidLayoutSubviews {
     %orig;
+
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
         UIView *contentView = self.contentView;
         if (contentView && contentView.superview) {
@@ -12098,6 +12216,26 @@ static const NSInteger kDYYYInstagramTabBarTintTag = 9217;
 
 - (void)viewDidLayoutSubviews {
     %orig;
+
+    if (DYYYGetBool(@"DYYYHidePlusButton") && !DYYYGetBool(@"DYYYHideBottomBg") && !DYYYGetBool(@"DYYYEnableFullScreen")) {
+        id extraView = self.bottomGaussianBlurView;
+        UIView *blurSourceView = [extraView isKindOfClass:UIView.class] ? (UIView *)extraView : nil;
+        if (!blurSourceView && [extraView respondsToSelector:@selector(view)]) {
+            id view = ((id (*)(id, SEL))objc_msgSend)(extraView, @selector(view));
+            blurSourceView = [view isKindOfClass:UIView.class] ? (UIView *)view : nil;
+        }
+        if (!blurSourceView && [extraView respondsToSelector:@selector(contentView)]) {
+            id contentView = ((id (*)(id, SEL))objc_msgSend)(extraView, @selector(contentView));
+            blurSourceView = [contentView isKindOfClass:UIView.class] ? (UIView *)contentView : nil;
+        }
+
+        UIWindow *window = self.view.window ?: [DYYYUtils getActiveWindow];
+        AWENormalModeTabBar *tabBar = [DYYYUtils findSubviewOfClass:%c(AWENormalModeTabBar) inContainer:window];
+        if (tabBar && blurSourceView) {
+            [tabBar dyyy_setInstagramLiveBlurSourceView:blurSourceView owner:self];
+        }
+    }
+
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
         UIView *contentView = self.contentView;
         if (contentView && contentView.superview) {
@@ -12113,6 +12251,14 @@ static const NSInteger kDYYYInstagramTabBarTintTag = 9217;
             }
         }
     }
+}
+
+- (void)viewDidDisappear:(BOOL)animated {
+    %orig;
+
+    UIWindow *window = self.view.window ?: [DYYYUtils getActiveWindow];
+    AWENormalModeTabBar *tabBar = [DYYYUtils findSubviewOfClass:%c(AWENormalModeTabBar) inContainer:window];
+    [tabBar dyyy_clearInstagramLiveBlurSourceViewForOwner:self];
 }
 
 - (void)setIsAutoPlay:(BOOL)arg0 {
