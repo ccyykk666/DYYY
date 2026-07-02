@@ -10602,6 +10602,7 @@ static Class plusInnerButtonClass = nil;
 static Class tabBarButtonClass = nil;
 static Class fakeTabBarClass = nil;
 static Class tabBarBlurViewClass = nil;
+static char kDYYYSystemTabBarGlassViewKey;
 
 + (void)initialize {
     if (self == [%c(AWENormalModeTabBar) class]) {
@@ -10617,9 +10618,9 @@ static Class tabBarBlurViewClass = nil;
 }
 
 %new
-- (BOOL)dyyy_hasSystemTabBarBackground {
-    if ([NSProcessInfo processInfo].operatingSystemVersion.majorVersion < 26 || !fakeTabBarClass || !self.superview) {
-        return NO;
+- (AWEFakeTabBar *)dyyy_systemTabBar {
+    if (!fakeTabBarClass || !self.superview) {
+        return nil;
     }
 
     for (UIView *sibling in self.superview.subviews) {
@@ -10629,19 +10630,79 @@ static Class tabBarBlurViewClass = nil;
 
         NSString *className = NSStringFromClass(sibling.class);
         BOOL isSystemTabBarContainer = [className containsString:@"TabBarContainer"];
-        if (([sibling isKindOfClass:fakeTabBarClass] || isSystemTabBarContainer) &&
-            [DYYYUtils containsSubviewOfClass:fakeTabBarClass inContainer:sibling]) {
-            return YES;
+        if ([sibling isKindOfClass:fakeTabBarClass] || isSystemTabBarContainer) {
+            AWEFakeTabBar *systemTabBar = [DYYYUtils findSubviewOfClass:fakeTabBarClass inContainer:sibling];
+            if (systemTabBar) {
+                return systemTabBar;
+            }
         }
     }
 
-    return NO;
+    return nil;
 }
 
 %new
 - (void)dyyy_applySystemTabBarBackgroundIfAvailable {
-    if (![self dyyy_hasSystemTabBarBackground]) {
+    UIVisualEffectView *glassView = objc_getAssociatedObject(self, &kDYYYSystemTabBarGlassViewKey);
+    AWEFakeTabBar *systemTabBar = [self dyyy_systemTabBar];
+    Class glassEffectClass = NSClassFromString(@"UIGlassEffect");
+    SEL effectWithStyleSelector = NSSelectorFromString(@"effectWithStyle:");
+
+    if ([NSProcessInfo processInfo].operatingSystemVersion.majorVersion < 26 || !systemTabBar || ![glassEffectClass respondsToSelector:effectWithStyleSelector]) {
+        [glassView removeFromSuperview];
+        objc_setAssociatedObject(self, &kDYYYSystemTabBarGlassViewKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
         return;
+    }
+
+    if (!glassView) {
+        // UIGlassEffectStyleRegular 的原始值为 0；动态调用避免旧 SDK 产生新系统类的硬链接。
+        UIVisualEffect *glassEffect = ((id (*)(id, SEL, NSInteger))objc_msgSend)((id)glassEffectClass, effectWithStyleSelector, 0);
+        if (!glassEffect) {
+            return;
+        }
+
+        glassView = [[UIVisualEffectView alloc] initWithEffect:glassEffect];
+        glassView.userInteractionEnabled = NO;
+        glassView.backgroundColor = UIColor.clearColor;
+        glassView.opaque = NO;
+        glassView.alpha = 1.0;
+
+        Class cornerConfigurationClass = NSClassFromString(@"UICornerConfiguration");
+        SEL capsuleSelector = NSSelectorFromString(@"capsuleConfiguration");
+        SEL setCornerConfigurationSelector = NSSelectorFromString(@"setCornerConfiguration:");
+        if ([cornerConfigurationClass respondsToSelector:capsuleSelector] && [glassView respondsToSelector:setCornerConfigurationSelector]) {
+            id capsuleConfiguration = ((id (*)(id, SEL))objc_msgSend)((id)cornerConfigurationClass, capsuleSelector);
+            ((void (*)(id, SEL, id))objc_msgSend)(glassView, setCornerConfigurationSelector, capsuleConfiguration);
+        }
+
+        [self insertSubview:glassView atIndex:0];
+        objc_setAssociatedObject(self, &kDYYYSystemTabBarGlassViewKey, glassView, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+
+    UIView *systemPlatterView = nil;
+    for (UIView *subview in systemTabBar.subviews) {
+        if ([NSStringFromClass(subview.class) containsString:@"TabBarItemPlatterView"] && subview.bounds.size.width > 1.0) {
+            systemPlatterView = subview;
+            break;
+        }
+    }
+
+    CGRect glassFrame = CGRectZero;
+    if (systemPlatterView) {
+        glassFrame = [systemPlatterView convertRect:systemPlatterView.bounds toView:self];
+    }
+    if (CGRectIsEmpty(glassFrame) || CGRectIsInfinite(glassFrame) || CGRectIsNull(glassFrame)) {
+        CGFloat horizontalInset = MIN(21.0, CGRectGetWidth(self.bounds) * 0.05);
+        glassFrame = CGRectMake(horizontalInset, 0, MAX(0, CGRectGetWidth(self.bounds) - horizontalInset * 2), MIN(62.0, CGRectGetHeight(self.bounds)));
+    }
+
+    glassView.frame = glassFrame;
+    glassView.hidden = NO;
+
+    if (![glassView respondsToSelector:NSSelectorFromString(@"setCornerConfiguration:")]) {
+        glassView.layer.cornerRadius = CGRectGetHeight(glassFrame) / 2.0;
+        glassView.layer.cornerCurve = kCACornerCurveContinuous;
+        glassView.clipsToBounds = YES;
     }
 
     self.backgroundColor = UIColor.clearColor;
@@ -10649,6 +10710,10 @@ static Class tabBarBlurViewClass = nil;
     self.skinContainerView.hidden = YES;
 
     for (UIView *subview in self.subviews) {
+        if (subview == glassView) {
+            continue;
+        }
+
         BOOL containsDouyinBlur = tabBarBlurViewClass && [DYYYUtils containsSubviewOfClass:tabBarBlurViewClass inContainer:subview];
         if ([subview isKindOfClass:barBackgroundClass] || containsDouyinBlur) {
             subview.hidden = YES;

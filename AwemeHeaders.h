@@ -449,7 +449,7 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @property(nonatomic, assign, readonly) UITabBarController *yy_viewController;
 @property(retain, nonatomic) AWETabBarSkinContainerView *skinContainerView;
 - (void)initializeOriginalTabBarHeight;
-- (BOOL)dyyy_hasSystemTabBarBackground;
+- (AWEFakeTabBar *)dyyy_systemTabBar;
 - (void)dyyy_applySystemTabBarBackgroundIfAvailable;
 @end
 
