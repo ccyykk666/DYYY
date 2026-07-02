@@ -1089,6 +1089,7 @@ static BOOL DYYYShouldBlockFeedNowPlayingSystemInfoWrite(void) {
 %end
 
 static BOOL DYYYShouldDisableAllHDR(void);
+static BOOL DYYYBitrateModelLooksHDR(id bitrateModel);
 static NSArray *DYYYFilteredSDRBitrateModels(NSArray *models);
 static NSArray *DYYYFilteredSDRRawBitrateData(NSArray *rawData);
 static void DYYYStripHDRHintsFromBitrateModels(NSArray *models);
@@ -1109,7 +1110,9 @@ static void DYYYStripHDRHintsFromBitrateModels(NSArray *models);
 
     // 查找比特率最高的模型
     id highestBitrateModel = nil;
+    id highestHDRBitrateModel = nil;
     NSInteger highestBitrate = 0;
+    NSInteger highestHDRBitrate = 0;
 
     for (id model in bitrateModels) {
         NSInteger bitrate = 0;
@@ -1127,11 +1130,16 @@ static void DYYYStripHDRHintsFromBitrateModels(NSArray *models);
             highestBitrate = bitrate;
             highestBitrateModel = model;
         }
+        if (validModel && DYYYBitrateModelLooksHDR(model) && bitrate > highestHDRBitrate) {
+            highestHDRBitrate = bitrate;
+            highestHDRBitrateModel = model;
+        }
     }
 
-    // 如果找到了最高比特率模型，获取其播放地址
-    if (highestBitrateModel) {
-        id playAddr = [highestBitrateModel valueForKey:@"playAddr"];
+    // 原生 HDR 码率优先；作品不含 HDR 时仍选择最高码率 SDR。
+    id preferredBitrateModel = highestHDRBitrateModel ?: highestBitrateModel;
+    if (preferredBitrateModel) {
+        id playAddr = [preferredBitrateModel valueForKey:@"playAddr"];
         if (playAddr && [playAddr isKindOfClass:%c(AWEURLModel)]) {
             return playAddr;
         }
@@ -1160,7 +1168,9 @@ static void DYYYStripHDRHintsFromBitrateModels(NSArray *models);
 
     // 查找比特率最高的模型
     id highestBitrateModel = nil;
+    id highestHDRBitrateModel = nil;
     NSInteger highestBitrate = 0;
+    NSInteger highestHDRBitrate = 0;
 
     for (id model in originalModels) {
 
@@ -1180,11 +1190,17 @@ static void DYYYStripHDRHintsFromBitrateModels(NSArray *models);
                 highestBitrate = bitrate;
                 highestBitrateModel = model;
             }
+            if (DYYYBitrateModelLooksHDR(model) && bitrate > highestHDRBitrate) {
+                highestHDRBitrate = bitrate;
+                highestHDRBitrateModel = model;
+            }
         }
     }
 
-    if (highestBitrateModel) {
-        return @[ highestBitrateModel ];
+    // 只收敛到作品自带的最佳 HDR 流；没有 HDR 流时维持原有最高码率逻辑。
+    id preferredBitrateModel = highestHDRBitrateModel ?: highestBitrateModel;
+    if (preferredBitrateModel) {
+        return @[ preferredBitrateModel ];
     }
 
     return originalModels;
