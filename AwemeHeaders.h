@@ -526,9 +526,6 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @property(nonatomic, readonly) UILabel *markLabel;
 @end
 
-@interface AWEVoiceSearchEntranceView : UIView
-@end
-
 @interface AWEPlayInteractionSearchAnchorView : UIView
 @end
 

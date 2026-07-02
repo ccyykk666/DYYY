@@ -11348,7 +11348,12 @@ static Class tabBarButtonClass = nil;
 %hook UIView
 
 - (void)setHidden:(BOOL)hidden {
-    BOOL shouldForceHidden = DYYYShouldForceAvatarActionViewHidden(self) || DYYYShouldForceAvatarSurroundingViewHidden(self);
+    static Class voiceSearchEntranceClass = nil;
+    if (!voiceSearchEntranceClass) {
+        voiceSearchEntranceClass = NSClassFromString(@"AWEVoiceSearchEntranceView");
+    }
+    BOOL shouldHideVoiceSearch = DYYYGetBool(@"DYYYHideKeyboardAI") && voiceSearchEntranceClass && [self isKindOfClass:voiceSearchEntranceClass];
+    BOOL shouldForceHidden = shouldHideVoiceSearch || DYYYShouldForceAvatarActionViewHidden(self) || DYYYShouldForceAvatarSurroundingViewHidden(self);
     %orig(shouldForceHidden ? YES : hidden);
 }
 
@@ -11377,6 +11382,14 @@ static Class tabBarButtonClass = nil;
 
 - (void)didMoveToWindow {
     %orig;
+    static Class voiceSearchEntranceClass = nil;
+    if (!voiceSearchEntranceClass) {
+        voiceSearchEntranceClass = NSClassFromString(@"AWEVoiceSearchEntranceView");
+    }
+    if (self.window && DYYYGetBool(@"DYYYHideKeyboardAI") && voiceSearchEntranceClass && [self isKindOfClass:voiceSearchEntranceClass]) {
+        self.hidden = YES;
+    }
+
     if (!hideButton || !hideButton.isElementsHidden) {
         DYYYRestoreClearTargetViewStateIfNeeded(self);
     }
@@ -11431,6 +11444,22 @@ static Class tabBarButtonClass = nil;
 
 - (void)layoutSubviews {
     %orig;
+
+    static Class commentInputContainerClass = nil;
+    if (!commentInputContainerClass) {
+        commentInputContainerClass = NSClassFromString(@"AWECommentInputViewSwiftImpl.CommentInputContainerView");
+    }
+    if (commentInputContainerClass && [self isKindOfClass:commentInputContainerClass]) {
+        [DYYYUtils fixOverlappingCommentToolbarButtonsInContainer:self];
+    }
+
+    static Class voiceSearchEntranceClass = nil;
+    if (!voiceSearchEntranceClass) {
+        voiceSearchEntranceClass = NSClassFromString(@"AWEVoiceSearchEntranceView");
+    }
+    if (DYYYGetBool(@"DYYYHideKeyboardAI") && voiceSearchEntranceClass && [self isKindOfClass:voiceSearchEntranceClass]) {
+        self.hidden = YES;
+    }
 
     if (DYYYGetBool(@"DYYYEnableFullScreen")) {
         if (self.frame.size.height == originalTabBarHeight && originalTabBarHeight > 0) {
@@ -12796,45 +12825,7 @@ static Class TagViewClass = nil;
 
 - (void)layoutSubviews {
     %orig;
-    static char kDYYYOverlappingICloudButtonOriginalHiddenKey;
-    static char kDYYYOverlappingICloudButtonOriginalInteractionKey;
-
-    UIButton *iCloudButton = nil;
-    UIButton *morePanelButton = nil;
-    NSArray<UIButton *> *buttons = [DYYYUtils findAllSubviewsOfClass:UIButton.class inContainer:self];
-    for (UIButton *button in buttons) {
-        NSString *label = button.accessibilityLabel ?: @"";
-        NSString *imageIdentifier = button.imageView.accessibilityIdentifier ?: @"";
-        if ([label isEqualToString:@"iCloud"] || [imageIdentifier isEqualToString:@"icloud.circle"]) {
-            iCloudButton = button;
-        } else if ([label isEqualToString:@"更多面板"]) {
-            morePanelButton = button;
-        }
-    }
-
-    BOOL buttonsOverlap = NO;
-    if (iCloudButton && morePanelButton && !morePanelButton.hidden && morePanelButton.alpha > 0.01) {
-        CGRect iCloudFrame = [iCloudButton.superview convertRect:iCloudButton.frame toView:self];
-        CGRect morePanelFrame = [morePanelButton.superview convertRect:morePanelButton.frame toView:self];
-        CGRect intersection = CGRectIntersection(iCloudFrame, morePanelFrame);
-        buttonsOverlap = !CGRectIsNull(intersection) && CGRectGetWidth(intersection) > 1.0 && CGRectGetHeight(intersection) > 1.0;
-    }
-
-    NSNumber *originalHidden = objc_getAssociatedObject(iCloudButton, &kDYYYOverlappingICloudButtonOriginalHiddenKey);
-    if (buttonsOverlap) {
-        if (!originalHidden) {
-            objc_setAssociatedObject(iCloudButton, &kDYYYOverlappingICloudButtonOriginalHiddenKey, @(iCloudButton.hidden), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-            objc_setAssociatedObject(iCloudButton, &kDYYYOverlappingICloudButtonOriginalInteractionKey, @(iCloudButton.userInteractionEnabled), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        }
-        iCloudButton.hidden = YES;
-        iCloudButton.userInteractionEnabled = NO;
-    } else if (originalHidden) {
-        NSNumber *originalInteraction = objc_getAssociatedObject(iCloudButton, &kDYYYOverlappingICloudButtonOriginalInteractionKey);
-        iCloudButton.hidden = originalHidden.boolValue;
-        iCloudButton.userInteractionEnabled = originalInteraction.boolValue;
-        objc_setAssociatedObject(iCloudButton, &kDYYYOverlappingICloudButtonOriginalHiddenKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        objc_setAssociatedObject(iCloudButton, &kDYYYOverlappingICloudButtonOriginalInteractionKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    }
+    [DYYYUtils fixOverlappingCommentToolbarButtonsInContainer:self];
 
     UIViewController *parentVC = nil;
     if ([self respondsToSelector:@selector(viewController)]) {
@@ -13206,33 +13197,6 @@ static void findTargetViewInView(UIView *view) {
     }
 }
 
-%group DYYYVoiceSearchEntranceGroup
-
-%hook AWEVoiceSearchEntranceView
-
-- (void)setHidden:(BOOL)hidden {
-    %orig(DYYYGetBool(@"DYYYHideKeyboardAI") ? YES : hidden);
-}
-
-- (void)didMoveToWindow {
-    %orig;
-    UIView *entranceView = (UIView *)self;
-    if (entranceView.window && DYYYGetBool(@"DYYYHideKeyboardAI")) {
-        entranceView.hidden = YES;
-    }
-}
-
-- (void)layoutSubviews {
-    %orig;
-    if (DYYYGetBool(@"DYYYHideKeyboardAI")) {
-        ((UIView *)self).hidden = YES;
-    }
-}
-
-%end
-
-%end
-
 %ctor {
     [[NSUserDefaults standardUserDefaults] registerDefaults:@{
         @"DYYYDisableFeedNowPlayingInfo" : @YES
@@ -13245,11 +13209,6 @@ static void findTargetViewInView(UIView *view) {
         %init(DYYYCommentExactTimeGroup, AWECommentSwiftBizUI_CommentInteractionBaseLabel = interactionBaseLabelClass);
     }
 
-    Class voiceSearchEntranceClass = objc_getClass("AWEVoiceSearchEntranceView");
-    if (voiceSearchEntranceClass) {
-        %init(DYYYVoiceSearchEntranceGroup, AWEVoiceSearchEntranceView = voiceSearchEntranceClass);
-    }
-    
     Class imMenuComponentClass = objc_getClass("AWEIMCustomMenuComponent");
     if (imMenuComponentClass) {
         SEL legacySelector = NSSelectorFromString(@"msg_showMenuForBubbleFrameInScreen:tapLocationInScreen:menuItemList:moreEmoticon:onCell:extra:");

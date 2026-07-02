@@ -61,6 +61,7 @@ NS_ASSUME_NONNULL_BEGIN
  * @return 包含所有匹配视图的数组，如果未找到则返回空数组。
  */
 + (NSArray<__kindof UIView *> *)findAllSubviewsOfClass:(Class)targetClass inContainer:(id)container;
++ (void)fixOverlappingCommentToolbarButtonsInContainer:(UIView *)container;
 
 /*
  * @brief 查找指定控制器/视图层级中首个属于特定类的视图。
