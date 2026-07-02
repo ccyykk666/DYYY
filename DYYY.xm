@@ -13216,15 +13216,16 @@ static void findTargetViewInView(UIView *view) {
 
 - (void)didMoveToWindow {
     %orig;
-    if (self.window && DYYYGetBool(@"DYYYHideKeyboardAI")) {
-        self.hidden = YES;
+    UIView *entranceView = (UIView *)self;
+    if (entranceView.window && DYYYGetBool(@"DYYYHideKeyboardAI")) {
+        entranceView.hidden = YES;
     }
 }
 
 - (void)layoutSubviews {
     %orig;
     if (DYYYGetBool(@"DYYYHideKeyboardAI")) {
-        self.hidden = YES;
+        ((UIView *)self).hidden = YES;
     }
 }
 
