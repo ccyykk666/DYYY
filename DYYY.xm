@@ -10600,6 +10600,8 @@ static Class plusContainerButtonClass = nil;
 static Class plusButtonClass = nil;
 static Class plusInnerButtonClass = nil;
 static Class tabBarButtonClass = nil;
+static Class fakeTabBarClass = nil;
+static Class tabBarBlurViewClass = nil;
 
 + (void)initialize {
     if (self == [%c(AWENormalModeTabBar) class]) {
@@ -10609,6 +10611,48 @@ static Class tabBarButtonClass = nil;
         plusButtonClass = %c(AWENormalModeTabBarGeneralPlusButton);
         plusInnerButtonClass = %c(AWENormalModeTabBarGeneralPlusInnerButton);
         tabBarButtonClass = %c(UITabBarButton);
+        fakeTabBarClass = %c(AWEFakeTabBar);
+        tabBarBlurViewClass = %c(AWENormalModeTabBarBlurView);
+    }
+}
+
+%new
+- (BOOL)dyyy_hasSystemTabBarBackground {
+    if ([NSProcessInfo processInfo].operatingSystemVersion.majorVersion < 26 || !fakeTabBarClass || !self.superview) {
+        return NO;
+    }
+
+    for (UIView *sibling in self.superview.subviews) {
+        if (sibling == self) {
+            continue;
+        }
+
+        NSString *className = NSStringFromClass(sibling.class);
+        BOOL isSystemTabBarContainer = [className containsString:@"TabBarContainer"];
+        if (([sibling isKindOfClass:fakeTabBarClass] || isSystemTabBarContainer) &&
+            [DYYYUtils containsSubviewOfClass:fakeTabBarClass inContainer:sibling]) {
+            return YES;
+        }
+    }
+
+    return NO;
+}
+
+%new
+- (void)dyyy_applySystemTabBarBackgroundIfAvailable {
+    if (![self dyyy_hasSystemTabBarBackground]) {
+        return;
+    }
+
+    self.backgroundColor = UIColor.clearColor;
+    self.opaque = NO;
+    self.skinContainerView.hidden = YES;
+
+    for (UIView *subview in self.subviews) {
+        BOOL containsDouyinBlur = tabBarBlurViewClass && [DYYYUtils containsSubviewOfClass:tabBarBlurViewClass inContainer:subview];
+        if ([subview isKindOfClass:barBackgroundClass] || containsDouyinBlur) {
+            subview.hidden = YES;
+        }
     }
 }
 
@@ -10781,6 +10825,8 @@ static Class tabBarButtonClass = nil;
             }
         }
     }
+
+    [self dyyy_applySystemTabBarBackgroundIfAvailable];
 }
 
 - (void)setHidden:(BOOL)hidden {
@@ -10853,6 +10899,8 @@ static Class tabBarButtonClass = nil;
             }
         }
     }
+
+    [self dyyy_applySystemTabBarBackgroundIfAvailable];
 }
 
 %end

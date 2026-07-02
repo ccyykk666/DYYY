@@ -439,10 +439,18 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @interface AWETabBarElementContainerView : UIView
 @end
 
+@interface AWEFakeTabBar : UITabBar
+@end
+
+@interface AWENormalModeTabBarBlurView : UIView
+@end
+
 @interface AWENormalModeTabBar : UIView
 @property(nonatomic, assign, readonly) UITabBarController *yy_viewController;
 @property(retain, nonatomic) AWETabBarSkinContainerView *skinContainerView;
 - (void)initializeOriginalTabBarHeight;
+- (BOOL)dyyy_hasSystemTabBarBackground;
+- (void)dyyy_applySystemTabBarBackgroundIfAvailable;
 @end
 
 @interface AWEPlayInteractionListenFeedView : UIView
