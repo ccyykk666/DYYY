@@ -443,10 +443,14 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @interface AWENormalModeTabBarBlurView : UIView
 @end
 
+@interface AWEFakeTabBar : UITabBar
+@end
+
 @interface AWENormalModeTabBar : UITabBar
 @property(nonatomic, assign, readonly) UITabBarController *yy_viewController;
 @property(retain, nonatomic) AWETabBarSkinContainerView *skinContainerView;
 - (void)initializeOriginalTabBarHeight;
+- (AWEFakeTabBar *)dyyy_fakeSystemTabBar;
 - (BOOL)dyyy_shouldUseIntegratedSystemTabBar;
 - (void)dyyy_restoreIntegratedSystemTabBar;
 - (void)dyyy_applyIntegratedSystemTabBarIfAvailable;

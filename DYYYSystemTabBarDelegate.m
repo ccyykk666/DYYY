@@ -6,34 +6,55 @@
 
 @implementation DYYYSystemTabBarDelegate
 
-- (void)tabBar:(UITabBar *)tabBar didSelectItem:(UITabBarItem *)item {
-    if ([self.originalDelegate respondsToSelector:@selector(tabBar:didSelectItem:)]) {
-        [self.originalDelegate tabBar:tabBar didSelectItem:item];
+- (instancetype)init {
+    self = [super init];
+    if (self) {
+        _pendingSelectionIndex = NSNotFound;
     }
+    return self;
+}
 
+- (void)tabBar:(UITabBar *)tabBar didSelectItem:(UITabBarItem *)item {
     NSUInteger index = [tabBar.items indexOfObjectIdenticalTo:item];
     if (index == NSNotFound || index >= self.sourceButtons.count) {
         return;
     }
 
-    AWENormalModeTabBarGeneralButton *button = self.sourceButtons[index];
-    if (!button.userInteractionEnabled) {
-        return;
-    }
+    self.pendingSelectionIndex = index;
+    self.pendingSelectionDeadline = [NSProcessInfo processInfo].systemUptime + 1.0;
 
-    id buttonDelegate = button.delegate;
-    SEL tapSelector = NSSelectorFromString(@"tabBarButtonDidTouchUpInside:gestureRecognizer:");
-    if ([buttonDelegate respondsToSelector:tapSelector]) {
-        id gestureRecognizer = nil;
-        SEL gestureSelector = NSSelectorFromString(@"singleTapGes");
-        if ([button respondsToSelector:gestureSelector]) {
-            gestureRecognizer = ((id (*)(id, SEL))objc_msgSend)(button, gestureSelector);
-        }
-        ((void (*)(id, SEL, id, id))objc_msgSend)(buttonDelegate, tapSelector, button, gestureRecognizer);
-        return;
-    }
+    __weak typeof(self) weakSelf = self;
+    dispatch_async(dispatch_get_main_queue(), ^{
+      __strong typeof(weakSelf) self = weakSelf;
+      if (!self || self.pendingSelectionIndex != (NSInteger)index || index >= self.sourceButtons.count) {
+          return;
+      }
 
-    [button sendActionsForControlEvents:UIControlEventTouchUpInside];
+      if ([self.originalDelegate respondsToSelector:@selector(tabBar:didSelectItem:)]) {
+          [self.originalDelegate tabBar:tabBar didSelectItem:item];
+      }
+
+      AWENormalModeTabBarGeneralButton *button = self.sourceButtons[index];
+      if (!button.userInteractionEnabled) {
+          self.pendingSelectionIndex = NSNotFound;
+          return;
+      }
+
+      id buttonDelegate = button.delegate;
+      SEL tapSelector = NSSelectorFromString(@"tabBarButtonDidTouchUpInside:gestureRecognizer:");
+      if ([buttonDelegate respondsToSelector:tapSelector]) {
+          id gestureRecognizer = nil;
+          SEL gestureSelector = NSSelectorFromString(@"singleTapGes");
+          if ([button respondsToSelector:gestureSelector]) {
+              gestureRecognizer = ((id (*)(id, SEL))objc_msgSend)(button, gestureSelector);
+          }
+          ((void (*)(id, SEL, id, id))objc_msgSend)(buttonDelegate, tapSelector, button, gestureRecognizer);
+      } else {
+          [button sendActionsForControlEvents:UIControlEventTouchUpInside];
+      }
+
+      [self.sourceTabBar setNeedsLayout];
+    });
 }
 
 - (BOOL)respondsToSelector:(SEL)aSelector {

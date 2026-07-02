@@ -10606,6 +10606,8 @@ static char kDYYYSystemTabBarDelegateKey;
 static char kDYYYSystemTabBarItemsKey;
 static char kDYYYSystemTabBarOriginalItemsKey;
 static char kDYYYSystemTabBarMutationKey;
+static char kDYYYFakeTabBarPlatterOriginalHiddenKey;
+static char kDYYYFakeTabBarPlatterSuppressedKey;
 
 + (void)initialize {
     if (self == [%c(AWENormalModeTabBar) class]) {
@@ -10620,6 +10622,30 @@ static char kDYYYSystemTabBarMutationKey;
 }
 
 %new
+- (AWEFakeTabBar *)dyyy_fakeSystemTabBar {
+    Class fakeTabBarClass = NSClassFromString(@"AWEFakeTabBar");
+    if (!fakeTabBarClass || !self.superview) {
+        return nil;
+    }
+
+    for (UIView *sibling in self.superview.subviews) {
+        if (sibling == self) {
+            continue;
+        }
+
+        NSString *className = NSStringFromClass(sibling.class);
+        if ([sibling isKindOfClass:fakeTabBarClass] || [className containsString:@"TabBarContainer"]) {
+            AWEFakeTabBar *fakeTabBar = [DYYYUtils findSubviewOfClass:fakeTabBarClass inContainer:sibling];
+            if (fakeTabBar) {
+                return fakeTabBar;
+            }
+        }
+    }
+
+    return nil;
+}
+
+%new
 - (BOOL)dyyy_shouldUseIntegratedSystemTabBar {
     return [NSProcessInfo processInfo].operatingSystemVersion.majorVersion >= 26 && NSClassFromString(@"UIGlassEffect") != nil && DYYYGetBool(@"DYYYHidePlusButton") &&
            !DYYYGetBool(@"DYYYHideBottomBg") && !DYYYGetBool(@"DYYYEnableFullScreen");
@@ -10627,6 +10653,22 @@ static char kDYYYSystemTabBarMutationKey;
 
 %new
 - (void)dyyy_restoreIntegratedSystemTabBar {
+    AWEFakeTabBar *fakeTabBar = [self dyyy_fakeSystemTabBar];
+    if (fakeTabBar) {
+        objc_setAssociatedObject(fakeTabBar, &kDYYYFakeTabBarPlatterSuppressedKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    for (UIView *subview in fakeTabBar.subviews) {
+        if (![NSStringFromClass(subview.class) containsString:@"TabBarItemPlatterView"]) {
+            continue;
+        }
+
+        NSNumber *originalHidden = objc_getAssociatedObject(subview, &kDYYYFakeTabBarPlatterOriginalHiddenKey);
+        if (originalHidden) {
+            subview.hidden = originalHidden.boolValue;
+            objc_setAssociatedObject(subview, &kDYYYFakeTabBarPlatterOriginalHiddenKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+    }
+
     DYYYSystemTabBarDelegate *delegateProxy = objc_getAssociatedObject(self, &kDYYYSystemTabBarDelegateKey);
     if (delegateProxy && self.delegate == delegateProxy) {
         self.delegate = delegateProxy.originalDelegate;
@@ -10671,26 +10713,44 @@ static char kDYYYSystemTabBarMutationKey;
     }
 
     NSMutableArray<NSString *> *titles = [NSMutableArray arrayWithCapacity:sourceButtons.count];
+    NSMutableArray<NSString *> *symbolNames = [NSMutableArray arrayWithCapacity:sourceButtons.count];
+    NSMutableArray<NSString *> *selectedSymbolNames = [NSMutableArray arrayWithCapacity:sourceButtons.count];
     for (AWENormalModeTabBarGeneralButton *button in sourceButtons) {
         NSString *title = button.accessibilityLabel ?: @"";
         NSString *customTitle = nil;
+        NSString *symbolName = @"circle.grid.2x2";
+        NSString *selectedSymbolName = @"circle.grid.2x2.fill";
         if ([title isEqualToString:@"首页"]) {
             customTitle = DYYYGetString(@"DYYYIndexTitle");
+            symbolName = @"house";
+            selectedSymbolName = @"house.fill";
         } else if ([title isEqualToString:@"朋友"]) {
             customTitle = DYYYGetString(@"DYYYFriendsTitle");
+            symbolName = @"person.2";
+            selectedSymbolName = @"person.2.fill";
         } else if ([title containsString:@"消息"]) {
             customTitle = DYYYGetString(@"DYYYMsgTitle");
+            symbolName = @"message";
+            selectedSymbolName = @"message.fill";
         } else if ([title isEqualToString:@"我"]) {
             customTitle = DYYYGetString(@"DYYYSelfTitle");
+            symbolName = @"person.crop.circle";
+            selectedSymbolName = @"person.crop.circle.fill";
+        } else if ([title containsString:@"商城"]) {
+            symbolName = @"bag";
+            selectedSymbolName = @"bag.fill";
         }
         [titles addObject:(customTitle.length > 0 ? customTitle : title)];
+        [symbolNames addObject:symbolName];
+        [selectedSymbolNames addObject:selectedSymbolName];
     }
 
     NSArray<UITabBarItem *> *systemItems = objc_getAssociatedObject(self, &kDYYYSystemTabBarItemsKey);
     BOOL needsNewItems = systemItems.count != titles.count;
     if (!needsNewItems) {
         for (NSUInteger index = 0; index < titles.count; index++) {
-            if (![systemItems[index].title isEqualToString:titles[index]]) {
+            UITabBarItem *item = systemItems[index];
+            if (item.title.length > 0 || ![item.accessibilityLabel isEqualToString:titles[index]] || !item.image || !item.selectedImage) {
                 needsNewItems = YES;
                 break;
             }
@@ -10703,8 +10763,13 @@ static char kDYYYSystemTabBarMutationKey;
         }
 
         NSMutableArray<UITabBarItem *> *newItems = [NSMutableArray arrayWithCapacity:titles.count];
+        UIImageSymbolConfiguration *symbolConfiguration = [UIImageSymbolConfiguration configurationWithPointSize:20.0 weight:UIImageSymbolWeightSemibold];
         for (NSUInteger index = 0; index < titles.count; index++) {
-            UITabBarItem *item = [[UITabBarItem alloc] initWithTitle:titles[index] image:nil tag:index];
+            UIImage *image = [[UIImage systemImageNamed:symbolNames[index]] imageByApplyingSymbolConfiguration:symbolConfiguration];
+            UIImage *selectedImage = [[UIImage systemImageNamed:selectedSymbolNames[index]] imageByApplyingSymbolConfiguration:symbolConfiguration];
+            UITabBarItem *item = [[UITabBarItem alloc] initWithTitle:nil image:image selectedImage:selectedImage];
+            item.tag = index;
+            item.accessibilityLabel = titles[index];
             item.accessibilityIdentifier = [NSString stringWithFormat:@"DYYYSystemTabBarItem%lu", (unsigned long)index];
             [newItems addObject:item];
         }
@@ -10728,11 +10793,39 @@ static char kDYYYSystemTabBarMutationKey;
     delegateProxy.sourceButtons = sourceButtons;
     self.delegate = delegateProxy;
 
-    NSUInteger selectedIndex = [sourceButtons indexOfObjectPassingTest:^BOOL(AWENormalModeTabBarGeneralButton *button, NSUInteger index, BOOL *stop) {
-      return button.status == 2;
-    }];
-    if (selectedIndex != NSNotFound && selectedIndex < systemItems.count) {
-        self.selectedItem = systemItems[selectedIndex];
+    NSInteger pendingIndex = delegateProxy.pendingSelectionIndex;
+    BOOL pendingExpired = pendingIndex != NSNotFound && [NSProcessInfo processInfo].systemUptime > delegateProxy.pendingSelectionDeadline;
+    if (pendingExpired) {
+        delegateProxy.pendingSelectionIndex = NSNotFound;
+        pendingIndex = NSNotFound;
+    }
+
+    if (pendingIndex != NSNotFound && pendingIndex >= 0 && (NSUInteger)pendingIndex < systemItems.count && (NSUInteger)pendingIndex < sourceButtons.count) {
+        self.selectedItem = systemItems[pendingIndex];
+        if (sourceButtons[pendingIndex].status == 2) {
+            delegateProxy.pendingSelectionIndex = NSNotFound;
+        }
+    } else {
+        NSUInteger selectedIndex = [sourceButtons indexOfObjectPassingTest:^BOOL(AWENormalModeTabBarGeneralButton *button, NSUInteger index, BOOL *stop) {
+          return button.status == 2;
+        }];
+        if (selectedIndex != NSNotFound && selectedIndex < systemItems.count) {
+            self.selectedItem = systemItems[selectedIndex];
+        }
+    }
+
+    AWEFakeTabBar *fakeTabBar = [self dyyy_fakeSystemTabBar];
+    if (fakeTabBar) {
+        objc_setAssociatedObject(fakeTabBar, &kDYYYFakeTabBarPlatterSuppressedKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    for (UIView *subview in fakeTabBar.subviews) {
+        if (![NSStringFromClass(subview.class) containsString:@"TabBarItemPlatterView"]) {
+            continue;
+        }
+        if (!objc_getAssociatedObject(subview, &kDYYYFakeTabBarPlatterOriginalHiddenKey)) {
+            objc_setAssociatedObject(subview, &kDYYYFakeTabBarPlatterOriginalHiddenKey, @(subview.hidden), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        subview.hidden = YES;
     }
 
     self.backgroundColor = UIColor.clearColor;
@@ -10996,6 +11089,24 @@ static char kDYYYSystemTabBarMutationKey;
     }
 
     [self dyyy_applyIntegratedSystemTabBarIfAvailable];
+}
+
+%end
+
+%hook AWEFakeTabBar
+
+- (void)layoutSubviews {
+    %orig;
+
+    if (![objc_getAssociatedObject(self, &kDYYYFakeTabBarPlatterSuppressedKey) boolValue]) {
+        return;
+    }
+
+    for (UIView *subview in self.subviews) {
+        if ([NSStringFromClass(subview.class) containsString:@"TabBarItemPlatterView"]) {
+            subview.hidden = YES;
+        }
+    }
 }
 
 %end
