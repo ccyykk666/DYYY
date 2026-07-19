@@ -424,6 +424,10 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @interface AWEBaseTabBar : UITabBar
 @end
 
+@interface AWEBaseTabBarController : UITabBarController
+@property(nonatomic, strong) UITabBar *customTabBar;
+@end
+
 @interface AWENormalModeTabBar : AWEBaseTabBar
 @property(nonatomic, assign, readonly) UITabBarController *yy_viewController;
 @property(retain, nonatomic) AWETabBarSkinContainerView *skinContainerView;
@@ -1346,7 +1350,7 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @interface AWENormalModeTabBarFeedView : UIView
 @end
 
-@interface AWENormalModeTabBarController : UIViewController
+@interface AWENormalModeTabBarController : AWEBaseTabBarController
 @property(nonatomic, strong) AWENormalModeTabBar *awe_tabBar;
 - (void)handleApplicationWillEnterForeground:(NSNotification *)notification;
 @end

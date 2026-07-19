@@ -835,11 +835,12 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
 
       // 【外观设置】分类
       NSMutableArray<AWESettingItemModel *> *appearanceItems = [NSMutableArray array];
+      NSString *systemTabBarStatus = [[NSUserDefaults standardUserDefaults] stringForKey:@"DYYYSystemTabBarRuntimeStatus"];
       NSArray *appearanceSettings = @[
           @{
               @"identifier" : @"DYYYUseSystemTabBar",
               @"title" : @"使用系统底栏",
-              @"subTitle" : @"使用系统原生外观与交互，结构不兼容时自动回退",
+              @"subTitle" : systemTabBarStatus.length > 0 ? systemTabBarStatus : @"使用系统原生外观与交互，结构不兼容时自动回退",
               @"detail" : @"",
               @"cellType" : @37,
               @"imageName" : @"ic_ipadiphone_outlined"
