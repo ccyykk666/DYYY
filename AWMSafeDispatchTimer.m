@@ -114,10 +114,25 @@ static const void *kAWMSafeDispatchTimerSpecificKey = &kAWMSafeDispatchTimerSpec
 }
 
 - (void)dealloc {
-    if (self.synchronizationQueue) {
-        dispatch_queue_set_specific(self.synchronizationQueue, kAWMSafeDispatchTimerSpecificKey, NULL, NULL);
+    // dealloc 中不能再通过 -cancel 异步捕获 self；对象析构完成后，
+    // 排队的 block 会向已释放实例发送 -cancelLocked，造成野指针崩溃。
+    dispatch_source_t timer = _internalTimer;
+    _internalHandler = nil;
+    _internalTimer = nil;
+
+    if (timer) {
+        dispatch_source_set_event_handler(timer, ^{});
+        if (_resumed) {
+            dispatch_source_cancel(timer);
+        }
     }
-    [self cancel];
+
+    _resumed = NO;
+    _running = NO;
+
+    if (_synchronizationQueue) {
+        dispatch_queue_set_specific(_synchronizationQueue, kAWMSafeDispatchTimerSpecificKey, NULL, NULL);
+    }
 }
 
 @end

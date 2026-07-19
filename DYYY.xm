@@ -29,6 +29,19 @@
 #import "DYYYToast.h"
 #import "DYYYUtils.h"
 
+#if __IPHONE_OS_VERSION_MAX_ALLOWED < 170000
+typedef NS_ENUM(NSInteger, UIImageDynamicRange) {
+    UIImageDynamicRangeUnspecified = -1,
+    UIImageDynamicRangeStandard = 0,
+    UIImageDynamicRangeConstrainedHigh = 1,
+    UIImageDynamicRangeHigh = 2,
+};
+
+@interface UIImageView (DYYYDynamicRangeCompatibility)
+@property(nonatomic, assign) UIImageDynamicRange preferredImageDynamicRange;
+@end
+#endif
+
 static CGFloat gStartY = 0.0;
 static CGFloat gStartVal = 0.0;
 static DYEdgeMode gMode = DYEdgeModeNone;
@@ -13058,7 +13071,7 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
 %end
 
 
-// 隐藏键盘 AI
+// 隐藏键盘 AI（旧版兼容）
 static __weak UIView *cachedHideView = nil;
 static void hideParentViewsSubviews(UIView *view) {
     if (!view)
@@ -13078,7 +13091,7 @@ static void hideParentViewsSubviews(UIView *view) {
     }
 }
 
-// 递归查找目标视图
+// 递归查找旧版目标视图
 static void findTargetViewInView(UIView *view) {
     if (cachedHideView)
         return;
@@ -13093,12 +13106,101 @@ static void findTargetViewInView(UIView *view) {
     }
 }
 
+// 39.6.0 的解密 IPA 中，语音入口由 AWEVoiceSearchManager 的
+// canShowVoiceSearchEntrance 属性控制，实际视图类型为
+// AWESearchKeyboardVoiceSearchEntranceView。直接拦截这两层，避免依赖通知时机和视图层级。
+static void DYYYForceHideKeyboardVoiceSearchView(UIView *view) {
+    if (!view || !DYYYGetBool(@"DYYYHideKeyboardAI")) {
+        return;
+    }
+    view.hidden = YES;
+    view.userInteractionEnabled = NO;
+}
+
+%group DYYYVoiceSearchManagerGroup
+
+%hook DYYYVoiceSearchManager
+
+- (BOOL)canShowVoiceSearchEntrance {
+    return DYYYGetBool(@"DYYYHideKeyboardAI") ? NO : %orig;
+}
+
+- (void)setCanShowVoiceSearchEntrance:(BOOL)canShow {
+    %orig(DYYYGetBool(@"DYYYHideKeyboardAI") ? NO : canShow);
+}
+
+%end
+
+%end
+
+%group DYYYVoiceSearchViewGroup
+
+%hook DYYYVoiceSearchEntranceView
+
+- (void)setHidden:(BOOL)hidden {
+    %orig(DYYYGetBool(@"DYYYHideKeyboardAI") ? YES : hidden);
+}
+
+- (void)didMoveToWindow {
+    %orig;
+    DYYYForceHideKeyboardVoiceSearchView((UIView *)self);
+}
+
+- (void)layoutSubviews {
+    %orig;
+    DYYYForceHideKeyboardVoiceSearchView((UIView *)self);
+}
+
+%end
+
+%end
+
+static BOOL dyyyVoiceSearchManagerHookInstalled = NO;
+static BOOL dyyyVoiceSearchViewHookInstalled = NO;
+
+static void DYYYInstallVoiceSearchHooksIfAvailable(void) {
+    Class voiceSearchManagerClass = objc_getClass("AWEVoiceSearchManager");
+    if (!dyyyVoiceSearchManagerHookInstalled && voiceSearchManagerClass) {
+        dyyyVoiceSearchManagerHookInstalled = YES;
+        %init(DYYYVoiceSearchManagerGroup, DYYYVoiceSearchManager = voiceSearchManagerClass);
+    }
+
+    Class voiceSearchEntranceViewClass = objc_getClass("AWESearchKeyboardVoiceSearchEntranceView");
+    if (!dyyyVoiceSearchViewHookInstalled && voiceSearchEntranceViewClass) {
+        dyyyVoiceSearchViewHookInstalled = YES;
+        %init(DYYYVoiceSearchViewGroup, DYYYVoiceSearchEntranceView = voiceSearchEntranceViewClass);
+    }
+}
+
+static void DYYYHideLoadedVoiceSearchEntranceViews(UIView *view) {
+    if (!view || !DYYYGetBool(@"DYYYHideKeyboardAI")) {
+        return;
+    }
+
+    Class entranceViewClass = objc_getClass("AWESearchKeyboardVoiceSearchEntranceView");
+    if (entranceViewClass && [view isKindOfClass:entranceViewClass]) {
+        DYYYForceHideKeyboardVoiceSearchView(view);
+    }
+
+    for (UIView *subview in view.subviews) {
+        DYYYHideLoadedVoiceSearchEntranceViews(subview);
+    }
+}
+
 %ctor {
     [[NSUserDefaults standardUserDefaults] registerDefaults:@{
         @"DYYYDisableFeedNowPlayingInfo" : @YES
     }];
 
     DYYYMigrateCombinedHDRModeIfNeeded();
+
+    DYYYInstallVoiceSearchHooksIfAvailable();
+    [[NSNotificationCenter defaultCenter] addObserverForName:NSBundleDidLoadNotification
+                                                      object:nil
+                                                       queue:[NSOperationQueue mainQueue]
+                                                  usingBlock:^(__unused NSNotification *notification) {
+                                                    DYYYInstallVoiceSearchHooksIfAvailable();
+                                                  }];
 
     Class interactionBaseLabelClass = objc_getClass("AWECommentSwiftBizUI.CommentInteractionBaseLabel");
     if (interactionBaseLabelClass) {
@@ -13178,6 +13280,10 @@ static void findTargetViewInView(UIView *view) {
                                                          queue:[NSOperationQueue mainQueue]
                                                     usingBlock:^(NSNotification *notification) {
                                                       if (DYYYGetBool(@"DYYYHideKeyboardAI")) {
+                                                          DYYYInstallVoiceSearchHooksIfAvailable();
+                                                          for (UIWindow *window in [UIApplication sharedApplication].windows) {
+                                                              DYYYHideLoadedVoiceSearchEntranceViews(window);
+                                                          }
                                                           if (cachedHideView) {
                                                               for (UIView *subview in cachedHideView.subviews) {
                                                                   subview.hidden = YES;
