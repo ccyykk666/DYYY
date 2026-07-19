@@ -253,8 +253,24 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 - (BOOL)showShareFriends;
 @end
 
-@interface AWENormalModeTabBarGeneralButton : UIButton
+@interface AWENormalModeTabBarButton : UIButton
+@property(nonatomic) NSInteger type;
 @property(nonatomic) NSInteger status;
+@end
+
+@interface AWENormalModeTabBarGeneralButton : AWENormalModeTabBarButton
+@property(nonatomic, strong) UIView *badgeContainerView;
+@end
+
+@interface AWENormalModeTabBarButtonParams : NSObject
+@property(nonatomic) NSInteger tabBarItemType;
+@property(nonatomic, strong) UIImage *normalImage;
+@property(nonatomic, strong) UIImage *selectedImage;
+@property(nonatomic, copy) NSString *text;
+@end
+
+@interface AWENormalModeTabBarViewsFactory : NSObject
+- (AWENormalModeTabBarButton *)tabBarButtonWithParams:(AWENormalModeTabBarButtonParams *)params;
 @end
 
 @interface AWEHPTopTabItemBadgeContentView : UIView
@@ -416,9 +432,17 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @interface AWETabBarElementContainerView : UIView
 @end
 
-@interface AWENormalModeTabBar : UIView
+@interface AWEBaseTabBar : UITabBar
+@end
+
+@interface AWENormalModeTabBar : AWEBaseTabBar
 @property(nonatomic, assign, readonly) UITabBarController *yy_viewController;
 @property(retain, nonatomic) AWETabBarSkinContainerView *skinContainerView;
+@property(retain, nonatomic) UIView *backgroundView;
+@property(retain, nonatomic) UIImageView *darkBackgroundImageView;
+@property(retain, nonatomic) UIImageView *lightBackgroundImageView;
+@property(retain, nonatomic) UIView *separatorLine;
+@property(copy, nonatomic) NSArray<AWENormalModeTabBarButton *> *tabBarButtons;
 - (void)initializeOriginalTabBarHeight;
 @end
 
@@ -1435,7 +1459,7 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @property(nonatomic) AWEURLModel *playAddr;
 @end
 
-@interface AWENormalModeTabBarPlusButton : UIView
+@interface AWENormalModeTabBarPlusButton : AWENormalModeTabBarButton
 @end
 
 @interface AWENormalModeTabBarGeneralPlusButton : AWENormalModeTabBarPlusButton

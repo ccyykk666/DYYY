@@ -10599,6 +10599,392 @@ static NSHashTable *processedParentViews = nil;
 
 %end
 
+static char kDYYYNativeVisualTabBarKey;
+static char kDYYYNativeTabItemKey;
+static char kDYYYNativeTabSourceTitleKey;
+static char kDYYYNativeTabActionKey;
+static char kDYYYNativeTabOriginalHiddenKey;
+
+static BOOL DYYYUseSystemTabBarEnabled(void) {
+    return DYYYGetBool(@"DYYYUseSystemTabBar") && UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPhone;
+}
+
+static void DYYYSetNativeTabViewHidden(UIView *view, BOOL hidden) {
+    if (!view) {
+        return;
+    }
+
+    NSNumber *originalHidden = objc_getAssociatedObject(view, &kDYYYNativeTabOriginalHiddenKey);
+    if (hidden) {
+        if (!originalHidden) {
+            objc_setAssociatedObject(view, &kDYYYNativeTabOriginalHiddenKey, @(view.hidden), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        }
+        view.hidden = YES;
+    } else if (originalHidden) {
+        view.hidden = originalHidden.boolValue;
+        objc_setAssociatedObject(view, &kDYYYNativeTabOriginalHiddenKey, nil, OBJC_ASSOCIATION_ASSIGN);
+    }
+}
+
+static BOOL DYYYNativeTabIsActionButton(AWENormalModeTabBarButton *button) {
+    NSNumber *cachedValue = objc_getAssociatedObject(button, &kDYYYNativeTabActionKey);
+    if (cachedValue) {
+        return cachedValue.boolValue;
+    }
+
+    Class plusButtonClass = NSClassFromString(@"AWENormalModeTabBarPlusButton");
+    NSString *title = objc_getAssociatedObject(button, &kDYYYNativeTabSourceTitleKey);
+    if (title.length == 0) {
+        title = button.accessibilityLabel;
+    }
+
+    BOOL isAction = (plusButtonClass && [button isKindOfClass:plusButtonClass]) || [title containsString:@"拍摄"] || [title containsString:@"发布"];
+    objc_setAssociatedObject(button, &kDYYYNativeTabActionKey, @(isAction), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    return isAction;
+}
+
+static NSString *DYYYNativeTabDisplayTitle(AWENormalModeTabBarButton *button, NSString *fallbackTitle) {
+    NSString *sourceTitle = objc_getAssociatedObject(button, &kDYYYNativeTabSourceTitleKey);
+    if (sourceTitle.length == 0) {
+        sourceTitle = fallbackTitle.length > 0 ? fallbackTitle : button.accessibilityLabel;
+    }
+
+    if ([sourceTitle containsString:@"首页"]) {
+        NSString *customTitle = DYYYGetString(@"DYYYIndexTitle");
+        return customTitle.length > 0 ? customTitle : @"首页";
+    }
+    if ([sourceTitle containsString:@"朋友"]) {
+        NSString *customTitle = DYYYGetString(@"DYYYFriendsTitle");
+        return customTitle.length > 0 ? customTitle : @"朋友";
+    }
+    if ([sourceTitle containsString:@"消息"]) {
+        NSString *customTitle = DYYYGetString(@"DYYYMsgTitle");
+        return customTitle.length > 0 ? customTitle : @"消息";
+    }
+    if ([sourceTitle isEqualToString:@"我"] || [sourceTitle containsString:@"我的"]) {
+        NSString *customTitle = DYYYGetString(@"DYYYSelfTitle");
+        return customTitle.length > 0 ? customTitle : sourceTitle;
+    }
+    if (DYYYNativeTabIsActionButton(button)) {
+        return nil;
+    }
+    return sourceTitle;
+}
+
+static NSArray<NSString *> *DYYYNativeTabSymbolNames(NSString *sourceTitle, BOOL isAction) {
+    if (isAction) {
+        return @[ @"plus.circle", @"plus.circle" ];
+    }
+    if ([sourceTitle containsString:@"首页"]) {
+        return @[ @"house", @"house.fill" ];
+    }
+    if ([sourceTitle containsString:@"朋友"]) {
+        return @[ @"person.2", @"person.2.fill" ];
+    }
+    if ([sourceTitle containsString:@"消息"]) {
+        return @[ @"message", @"message.fill" ];
+    }
+    if ([sourceTitle isEqualToString:@"我"] || [sourceTitle containsString:@"我的"]) {
+        return @[ @"person", @"person.fill" ];
+    }
+    if ([sourceTitle containsString:@"商城"] || [sourceTitle containsString:@"购物"]) {
+        return @[ @"bag", @"bag.fill" ];
+    }
+    if ([sourceTitle containsString:@"热点"] || [sourceTitle containsString:@"热榜"]) {
+        return @[ @"flame", @"flame.fill" ];
+    }
+    return nil;
+}
+
+static UIImage *DYYYNativeTabTemplateImage(UIImage *image) {
+    return image ? [image imageWithRenderingMode:UIImageRenderingModeAlwaysTemplate] : nil;
+}
+
+static void DYYYBindNativeTabItem(AWENormalModeTabBarButton *button, AWENormalModeTabBarButtonParams *params) {
+    if (!button || !params) {
+        return;
+    }
+
+    NSString *sourceTitle = params.text.length > 0 ? params.text : button.accessibilityLabel;
+    if (sourceTitle.length > 0) {
+        objc_setAssociatedObject(button, &kDYYYNativeTabSourceTitleKey, sourceTitle, OBJC_ASSOCIATION_COPY_NONATOMIC);
+    }
+    objc_setAssociatedObject(button, &kDYYYNativeTabActionKey, nil, OBJC_ASSOCIATION_ASSIGN);
+
+    BOOL isAction = DYYYNativeTabIsActionButton(button);
+    NSArray<NSString *> *symbolNames = DYYYNativeTabSymbolNames(sourceTitle ?: @"", isAction);
+    UIImage *normalImage = symbolNames ? [UIImage systemImageNamed:symbolNames.firstObject] : DYYYNativeTabTemplateImage(params.normalImage);
+    UIImage *selectedImage = symbolNames ? [UIImage systemImageNamed:symbolNames.lastObject] : DYYYNativeTabTemplateImage(params.selectedImage ?: params.normalImage);
+    UITabBarItem *item = [[UITabBarItem alloc] initWithTitle:DYYYNativeTabDisplayTitle(button, sourceTitle) image:normalImage selectedImage:selectedImage];
+    item.tag = params.tabBarItemType;
+    objc_setAssociatedObject(button, &kDYYYNativeTabItemKey, item, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+}
+
+static UITabBarItem *DYYYNativeTabItemForButton(AWENormalModeTabBarButton *button) {
+    UITabBarItem *item = objc_getAssociatedObject(button, &kDYYYNativeTabItemKey);
+    NSString *sourceTitle = objc_getAssociatedObject(button, &kDYYYNativeTabSourceTitleKey);
+    if (sourceTitle.length == 0) {
+        sourceTitle = button.accessibilityLabel;
+        if (sourceTitle.length > 0) {
+            objc_setAssociatedObject(button, &kDYYYNativeTabSourceTitleKey, sourceTitle, OBJC_ASSOCIATION_COPY_NONATOMIC);
+        }
+    }
+
+    BOOL isAction = DYYYNativeTabIsActionButton(button);
+    NSArray<NSString *> *symbolNames = DYYYNativeTabSymbolNames(sourceTitle ?: @"", isAction);
+    if (!item) {
+        UIImage *normalImage = symbolNames ? [UIImage systemImageNamed:symbolNames.firstObject] : nil;
+        UIImage *selectedImage = symbolNames ? [UIImage systemImageNamed:symbolNames.lastObject] : normalImage;
+        item = [[UITabBarItem alloc] initWithTitle:DYYYNativeTabDisplayTitle(button, sourceTitle) image:normalImage selectedImage:selectedImage];
+        item.tag = button.type;
+        objc_setAssociatedObject(button, &kDYYYNativeTabItemKey, item, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    } else {
+        item.title = DYYYNativeTabDisplayTitle(button, sourceTitle);
+        if (symbolNames) {
+            item.image = [UIImage systemImageNamed:symbolNames.firstObject];
+            item.selectedImage = [UIImage systemImageNamed:symbolNames.lastObject];
+        }
+    }
+    return item;
+}
+
+static void DYYYRestoreNativeTabVisualState(UIView *view) {
+    DYYYSetNativeTabViewHidden(view, NO);
+    for (UIView *subview in view.subviews) {
+        DYYYRestoreNativeTabVisualState(subview);
+    }
+}
+
+static BOOL DYYYNativeTabSubtreeNeedsInteraction(UIView *view) {
+    if ([view isKindOfClass:UIControl.class] || view.gestureRecognizers.count > 0) {
+        return YES;
+    }
+    for (UIView *subview in view.subviews) {
+        if (DYYYNativeTabSubtreeNeedsInteraction(subview)) {
+            return YES;
+        }
+    }
+    return NO;
+}
+
+static void DYYYHideNativeTabVisualDescendants(UIView *container, UIView *badgeView) {
+    for (UIView *subview in container.subviews) {
+        BOOL containsBadge = badgeView && (subview == badgeView || [badgeView isDescendantOfView:subview]);
+        BOOL containsInteraction = DYYYNativeTabSubtreeNeedsInteraction(subview);
+        if (containsBadge) {
+            DYYYRestoreNativeTabVisualState(subview);
+            continue;
+        }
+        if (containsInteraction) {
+            DYYYSetNativeTabViewHidden(subview, NO);
+            DYYYHideNativeTabVisualDescendants(subview, badgeView);
+            continue;
+        }
+
+        DYYYSetNativeTabViewHidden(subview, YES);
+    }
+}
+
+static void DYYYSetNativeTabOriginalVisualsHidden(AWENormalModeTabBarButton *button, BOOL hidden) {
+    if (!button) {
+        return;
+    }
+    if (!hidden) {
+        for (UIView *subview in button.subviews) {
+            DYYYRestoreNativeTabVisualState(subview);
+        }
+        return;
+    }
+
+    UIView *badgeView = nil;
+    if ([button isKindOfClass:NSClassFromString(@"AWENormalModeTabBarGeneralButton")]) {
+        badgeView = ((AWENormalModeTabBarGeneralButton *)button).badgeContainerView;
+    }
+    DYYYHideNativeTabVisualDescendants(button, badgeView);
+}
+
+static UIView *DYYYNativeTabTopLevelView(UIView *view, UIView *container) {
+    UIView *candidate = view;
+    while (candidate.superview && candidate.superview != container) {
+        candidate = candidate.superview;
+    }
+    return candidate.superview == container ? candidate : nil;
+}
+
+static UITabBar *DYYYNativeVisualTabBar(AWENormalModeTabBar *tabBar, BOOL createIfNeeded) {
+    UITabBar *visualTabBar = objc_getAssociatedObject(tabBar, &kDYYYNativeVisualTabBarKey);
+    if (!visualTabBar && createIfNeeded) {
+        visualTabBar = [[UITabBar alloc] initWithFrame:tabBar.bounds];
+        visualTabBar.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        visualTabBar.userInteractionEnabled = NO;
+        visualTabBar.isAccessibilityElement = NO;
+        visualTabBar.accessibilityElementsHidden = YES;
+        visualTabBar.itemPositioning = UITabBarItemPositioningFill;
+        visualTabBar.accessibilityIdentifier = @"DYYYNativeVisualTabBar";
+
+        UITabBarAppearance *appearance = [[UITabBarAppearance alloc] init];
+        [appearance configureWithDefaultBackground];
+        visualTabBar.standardAppearance = appearance;
+        if (@available(iOS 15.0, *)) {
+            visualTabBar.scrollEdgeAppearance = appearance;
+        }
+
+        [tabBar addSubview:visualTabBar];
+        objc_setAssociatedObject(tabBar, &kDYYYNativeVisualTabBarKey, visualTabBar, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    return visualTabBar;
+}
+
+static AWENormalModeTabBar *DYYYNativeTabBarForButton(AWENormalModeTabBarButton *button) {
+    UIView *ancestor = button.superview;
+    Class tabBarClass = NSClassFromString(@"AWENormalModeTabBar");
+    while (ancestor && tabBarClass && ![ancestor isKindOfClass:tabBarClass]) {
+        ancestor = ancestor.superview;
+    }
+    return (AWENormalModeTabBar *)ancestor;
+}
+
+static BOOL DYYYNativeTabButtonUsesVisualBar(AWENormalModeTabBarButton *button) {
+    AWENormalModeTabBar *tabBar = DYYYNativeTabBarForButton(button);
+    return tabBar && DYYYNativeVisualTabBar(tabBar, NO) != nil;
+}
+
+static NSArray<AWENormalModeTabBarButton *> *DYYYNativeTabButtons(AWENormalModeTabBar *tabBar) {
+    NSArray *configuredButtons = tabBar.tabBarButtons;
+    if (configuredButtons.count == 0) {
+        return @[];
+    }
+
+    NSMutableArray *buttons = [NSMutableArray arrayWithCapacity:configuredButtons.count];
+    Class buttonClass = NSClassFromString(@"AWENormalModeTabBarButton");
+    for (id candidate in configuredButtons) {
+        if (buttonClass && [candidate isKindOfClass:buttonClass]) {
+            [buttons addObject:candidate];
+        }
+    }
+    return buttons;
+}
+
+static void DYYYRemoveNativeVisualTabBar(AWENormalModeTabBar *tabBar, NSArray<AWENormalModeTabBarButton *> *buttons) {
+    UITabBar *visualTabBar = DYYYNativeVisualTabBar(tabBar, NO);
+    DYYYSetNativeTabViewHidden(tabBar.skinContainerView, NO);
+    DYYYSetNativeTabViewHidden(tabBar.backgroundView, NO);
+    DYYYSetNativeTabViewHidden(tabBar.darkBackgroundImageView, NO);
+    DYYYSetNativeTabViewHidden(tabBar.lightBackgroundImageView, NO);
+    DYYYSetNativeTabViewHidden(tabBar.separatorLine, NO);
+    Class barBackgroundClass = NSClassFromString(@"_UIBarBackground");
+    for (UIView *subview in tabBar.subviews) {
+        if (subview != visualTabBar && barBackgroundClass && [subview isKindOfClass:barBackgroundClass]) {
+            DYYYSetNativeTabViewHidden(subview, NO);
+        }
+    }
+    if (visualTabBar) {
+        [visualTabBar removeFromSuperview];
+        objc_setAssociatedObject(tabBar, &kDYYYNativeVisualTabBarKey, nil, OBJC_ASSOCIATION_ASSIGN);
+    }
+    for (AWENormalModeTabBarButton *button in buttons) {
+        DYYYSetNativeTabOriginalVisualsHidden(button, NO);
+    }
+}
+
+static void DYYYUpdateNativeVisualTabBar(AWENormalModeTabBar *tabBar) {
+    NSArray<AWENormalModeTabBarButton *> *allButtons = DYYYNativeTabButtons(tabBar);
+    if (!DYYYUseSystemTabBarEnabled()) {
+        DYYYRemoveNativeVisualTabBar(tabBar, allButtons);
+        return;
+    }
+
+    NSMutableArray<AWENormalModeTabBarButton *> *visibleButtons = [NSMutableArray arrayWithCapacity:allButtons.count];
+    for (AWENormalModeTabBarButton *button in allButtons) {
+        if (!button.hidden) {
+            [visibleButtons addObject:button];
+        }
+    }
+
+    if (visibleButtons.count < 2 || visibleButtons.count > 5) {
+        DYYYRemoveNativeVisualTabBar(tabBar, allButtons);
+        return;
+    }
+
+    NSMutableArray<UITabBarItem *> *items = [NSMutableArray arrayWithCapacity:visibleButtons.count];
+    UITabBarItem *selectedItem = nil;
+    for (AWENormalModeTabBarButton *button in visibleButtons) {
+        UITabBarItem *item = DYYYNativeTabItemForButton(button);
+        if (!item) {
+            continue;
+        }
+        [items addObject:item];
+        DYYYSetNativeTabOriginalVisualsHidden(button, YES);
+        if (!DYYYNativeTabIsActionButton(button) && button.status == 2) {
+            selectedItem = item;
+        }
+    }
+
+    if (items.count != visibleButtons.count) {
+        DYYYRemoveNativeVisualTabBar(tabBar, allButtons);
+        return;
+    }
+
+    UITabBar *visualTabBar = DYYYNativeVisualTabBar(tabBar, YES);
+    visualTabBar.frame = tabBar.bounds;
+    if (![visualTabBar.items isEqualToArray:items]) {
+        [visualTabBar setItems:items animated:NO];
+    }
+    if (selectedItem) {
+        visualTabBar.selectedItem = selectedItem;
+    }
+
+    DYYYSetNativeTabViewHidden(tabBar.skinContainerView, YES);
+    DYYYSetNativeTabViewHidden(tabBar.backgroundView, YES);
+    DYYYSetNativeTabViewHidden(tabBar.darkBackgroundImageView, YES);
+    DYYYSetNativeTabViewHidden(tabBar.lightBackgroundImageView, YES);
+    DYYYSetNativeTabViewHidden(tabBar.separatorLine, YES);
+    Class barBackgroundClass = NSClassFromString(@"_UIBarBackground");
+    for (UIView *subview in tabBar.subviews) {
+        if (subview != visualTabBar && barBackgroundClass && [subview isKindOfClass:barBackgroundClass]) {
+            DYYYSetNativeTabViewHidden(subview, YES);
+        }
+    }
+
+    [tabBar bringSubviewToFront:visualTabBar];
+    for (AWENormalModeTabBarButton *button in visibleButtons) {
+        UIView *topLevelView = DYYYNativeTabTopLevelView(button, tabBar);
+        if (topLevelView) {
+            [tabBar bringSubviewToFront:topLevelView];
+        }
+    }
+}
+
+static void DYYYSyncNativeTabSelection(AWENormalModeTabBarButton *button, NSInteger status) {
+    if (!DYYYUseSystemTabBarEnabled()) {
+        return;
+    }
+
+    BOOL selected = status == 2 && !DYYYNativeTabIsActionButton(button);
+    UIAccessibilityTraits traits = button.accessibilityTraits;
+    button.accessibilityTraits = selected ? (traits | UIAccessibilityTraitSelected) : (traits & ~UIAccessibilityTraitSelected);
+    if (!selected) {
+        return;
+    }
+
+    AWENormalModeTabBar *tabBar = DYYYNativeTabBarForButton(button);
+    UITabBar *visualTabBar = tabBar ? DYYYNativeVisualTabBar(tabBar, NO) : nil;
+    UITabBarItem *item = objc_getAssociatedObject(button, &kDYYYNativeTabItemKey);
+    if (visualTabBar && item && [visualTabBar.items containsObject:item]) {
+        visualTabBar.selectedItem = item;
+    }
+}
+
+%hook AWENormalModeTabBarViewsFactory
+
+- (AWENormalModeTabBarButton *)tabBarButtonWithParams:(AWENormalModeTabBarButtonParams *)params {
+    AWENormalModeTabBarButton *button = %orig(params);
+    DYYYBindNativeTabItem(button, params);
+    return button;
+}
+
+%end
+
 // 底栏高度
 %hook AWENormalModeTabBarPlusButton
 
@@ -10627,6 +11013,7 @@ static NSHashTable *processedParentViews = nil;
         self.userInteractionEnabled = NO;
         self.hidden = YES;
     }
+    DYYYSetNativeTabOriginalVisualsHidden(self, DYYYNativeTabButtonUsesVisualBar(self));
 }
 
 %end
@@ -10684,6 +11071,11 @@ static Class tabBarButtonClass = nil;
     if (self.window) {
         [self initializeOriginalTabBarHeight];
     }
+}
+
+- (void)updateTabBarButtons:(NSArray *)buttons animated:(BOOL)animated {
+    %orig;
+    DYYYUpdateNativeVisualTabBar(self);
 }
 
 - (void)layoutSubviews {
@@ -10821,6 +11213,8 @@ static Class tabBarButtonClass = nil;
             }
         }
     }
+
+    DYYYUpdateNativeVisualTabBar(self);
 }
 
 - (void)setHidden:(BOOL)hidden {
@@ -10893,6 +11287,8 @@ static Class tabBarButtonClass = nil;
             }
         }
     }
+
+    DYYYUpdateNativeVisualTabBar(self);
 }
 
 %end
@@ -10941,6 +11337,16 @@ static Class tabBarButtonClass = nil;
 
 // 禁用点击首页刷新
 %hook AWENormalModeTabBarGeneralButton
+
+- (void)setStatus:(NSInteger)status {
+    %orig(status);
+    DYYYSyncNativeTabSelection(self, status);
+}
+
+- (void)layoutSubviews {
+    %orig;
+    DYYYSetNativeTabOriginalVisualsHidden(self, DYYYNativeTabButtonUsesVisualBar(self));
+}
 
 - (BOOL)enableRefresh {
     if ([self.accessibilityLabel isEqualToString:@"首页"]) {

@@ -836,6 +836,14 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
       // 【外观设置】分类
       NSMutableArray<AWESettingItemModel *> *appearanceItems = [NSMutableArray array];
       NSArray *appearanceSettings = @[
+          @{
+              @"identifier" : @"DYYYUseSystemTabBar",
+              @"title" : @"使用系统底栏",
+              @"subTitle" : @"使用系统原生样式，保留抖音原有点击行为",
+              @"detail" : @"",
+              @"cellType" : @37,
+              @"imageName" : @"ic_ipadiphone_outlined"
+          },
           @{@"identifier" : @"DYYYEnableDanmuColor",
             @"title" : @"启用弹幕改色",
             @"detail" : @"",
