@@ -6,9 +6,11 @@ static const void *kAWMSafeDispatchTimerSpecificKey = &kAWMSafeDispatchTimerSpec
 @interface AWMSafeDispatchTimer ()
 @property (nonatomic, strong, nullable) dispatch_source_t internalTimer;
 @property (nonatomic, assign) BOOL resumed;
-@property (nonatomic, copy, nullable) dispatch_block_t internalHandler;
 @property (nonatomic, strong) dispatch_queue_t synchronizationQueue;
 @property (nonatomic, assign, getter=isRunning) BOOL running;
+- (void)cancelLocked;
+- (BOOL)isCurrentTimerIdentity:(uintptr_t)timerIdentity;
+- (void)cancelTimerIfCurrentIdentity:(uintptr_t)timerIdentity;
 @end
 
 @implementation AWMSafeDispatchTimer
@@ -50,20 +52,20 @@ static const void *kAWMSafeDispatchTimerSpecificKey = &kAWMSafeDispatchTimerSpec
       }
 
       strongSelf.internalTimer = timer;
-      strongSelf.internalHandler = handler;
+      dispatch_block_t eventBlock = [handler copy];
+      uintptr_t timerIdentity = (uintptr_t)(__bridge void *)timer;
 
       dispatch_source_set_timer(timer, startTime, repeatInterval, tolerance);
       dispatch_source_set_event_handler(timer, ^{
         __strong __typeof(weakSelf) innerSelf = weakSelf;
-        if (!innerSelf) {
+        if (!innerSelf || ![innerSelf isCurrentTimerIdentity:timerIdentity]) {
             return;
         }
-        dispatch_block_t block = innerSelf.internalHandler;
-        if (block) {
-            block();
+        if (eventBlock) {
+            eventBlock();
         }
         if (!repeats) {
-            [innerSelf cancel];
+            [innerSelf cancelTimerIfCurrentIdentity:timerIdentity];
         }
       });
 
@@ -88,7 +90,6 @@ static const void *kAWMSafeDispatchTimerSpecificKey = &kAWMSafeDispatchTimerSpec
     }
 
     dispatch_source_t timer = self.internalTimer;
-    self.internalHandler = nil;
     self.internalTimer = nil;
 
     dispatch_source_set_event_handler(timer, ^{});
@@ -99,6 +100,26 @@ static const void *kAWMSafeDispatchTimerSpecificKey = &kAWMSafeDispatchTimerSpec
     }
 
     self.running = NO;
+}
+
+- (BOOL)isCurrentTimerIdentity:(uintptr_t)timerIdentity {
+    if (dispatch_get_specific(kAWMSafeDispatchTimerSpecificKey) == (__bridge void *)self) {
+        return (uintptr_t)(__bridge void *)self.internalTimer == timerIdentity;
+    }
+
+    __block BOOL isCurrent = NO;
+    dispatch_sync(self.synchronizationQueue, ^{
+      isCurrent = (uintptr_t)(__bridge void *)self.internalTimer == timerIdentity;
+    });
+    return isCurrent;
+}
+
+- (void)cancelTimerIfCurrentIdentity:(uintptr_t)timerIdentity {
+    dispatch_async(self.synchronizationQueue, ^{
+      if ((uintptr_t)(__bridge void *)self.internalTimer == timerIdentity) {
+          [self cancelLocked];
+      }
+    });
 }
 
 - (BOOL)isRunning {
@@ -114,10 +135,24 @@ static const void *kAWMSafeDispatchTimerSpecificKey = &kAWMSafeDispatchTimerSpec
 }
 
 - (void)dealloc {
-    if (self.synchronizationQueue) {
-        dispatch_queue_set_specific(self.synchronizationQueue, kAWMSafeDispatchTimerSpecificKey, NULL, NULL);
+    // dealloc 中不能再通过 -cancel 异步捕获 self；对象析构完成后，
+    // 排队的 block 会向已释放实例发送 -cancelLocked，造成野指针崩溃。
+    dispatch_source_t timer = _internalTimer;
+    _internalTimer = nil;
+
+    if (timer) {
+        dispatch_source_set_event_handler(timer, ^{});
+        if (_resumed) {
+            dispatch_source_cancel(timer);
+        }
     }
-    [self cancel];
+
+    _resumed = NO;
+    _running = NO;
+
+    if (_synchronizationQueue) {
+        dispatch_queue_set_specific(_synchronizationQueue, kAWMSafeDispatchTimerSpecificKey, NULL, NULL);
+    }
 }
 
 @end

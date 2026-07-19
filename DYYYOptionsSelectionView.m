@@ -159,36 +159,12 @@ static void DYYYApplySelectionSheetThemeToView(UIView *view, BOOL darkMode) {
     Class DUXContentSheetClass = NSClassFromString(@"DUXContentSheet");
 
     NSMutableArray *models = [NSMutableArray array];
-    NSMutableArray *modelRefs = [NSMutableArray array];
-
-    __block id contentSheet = nil;
 
     for (NSString *option in optionsArray) {
         id model = [[AWESettingItemModelClass alloc] initWithIdentifier:option];
         [model setTitle:option];
         [model setIsSelect:[savedPreference isEqualToString:option]];
         [models addObject:model];
-        [modelRefs addObject:model];
-    }
-
-    for (int i = 0; i < modelRefs.count; i++) {
-        id currentModel = modelRefs[i];
-        [currentModel setCellTappedBlock:^{
-          for (int j = 0; j < modelRefs.count; j++) {
-              [modelRefs[j] setIsSelect:(j == i)];
-          }
-
-          NSString *selectedValue = [currentModel title];
-          [[NSUserDefaults standardUserDefaults] setObject:selectedValue forKey:preferenceKey];
-
-          if (callback) {
-              callback(selectedValue);
-          }
-
-          if (contentSheet) {
-              [contentSheet dismissViewControllerAnimated:YES completion:nil];
-          }
-        }];
     }
 
     id config = [[AWEPrivacySettingActionSheetConfigClass alloc] init];
@@ -223,13 +199,37 @@ static void DYYYApplySelectionSheetThemeToView(UIView *view, BOOL darkMode) {
     DYYYApplySelectionSheetThemeToView(containerVC.view, isDarkMode);
 
     CGFloat fittingHeight = DYYYSelectionSheetFittingHeight(optionsArray, headerText, presentingVC);
-    contentSheet = [[DUXContentSheetClass alloc] initWithRootViewController:containerVC withTopType:0 withHeight:fittingHeight];
+    id contentSheet = [[DUXContentSheetClass alloc] initWithRootViewController:containerVC withTopType:0 withHeight:fittingHeight];
     [contentSheet setContentColor:sheetBackgroundColor];
     [contentSheet setAutoAlignmentCenter:YES];
     [contentSheet setSheetCornerRadius:10.0];
 
+    __weak id weakContentSheet = contentSheet;
+    __weak NSArray *weakModels = models;
+    for (NSInteger i = 0; i < models.count; i++) {
+        id currentModel = models[i];
+        __weak id weakCurrentModel = currentModel;
+        [currentModel setCellTappedBlock:^{
+          NSArray *strongModels = weakModels;
+          for (NSInteger j = 0; j < strongModels.count; j++) {
+              [strongModels[j] setIsSelect:(j == i)];
+          }
+
+          NSString *selectedValue = [weakCurrentModel title];
+          if (!selectedValue) {
+              return;
+          }
+          [[NSUserDefaults standardUserDefaults] setObject:selectedValue forKey:preferenceKey];
+
+          if (callback) {
+              callback(selectedValue);
+          }
+          [weakContentSheet dismissViewControllerAnimated:YES completion:nil];
+        }];
+    }
+
     [actionSheet setCloseBlock:^{
-      [contentSheet dismissViewControllerAnimated:YES completion:nil];
+      [weakContentSheet dismissViewControllerAnimated:YES completion:nil];
     }];
 
     [contentSheet showOnViewController:presentingVC completion:nil];

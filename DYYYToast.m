@@ -102,7 +102,7 @@
     return self;
 }
 
-- (void)setProgress:(float)progress {
+- (void)setProgress:(CGFloat)progress {
     // 确保在主线程中更新UI
     if (![NSThread isMainThread]) {
         dispatch_async(dispatch_get_main_queue(), ^{

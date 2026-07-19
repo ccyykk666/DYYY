@@ -31,8 +31,6 @@ typedef void (^DYYYAlertActionHandler)(void);
 /**
  * 关闭警告框
  */
-- (void)dismiss;
-
 @end
 
 NS_ASSUME_NONNULL_END

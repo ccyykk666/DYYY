@@ -13,7 +13,7 @@ static NSString *const kDefaultRemoteConfigURL = DYYY_DEFAULT_ABTEST_URL;
 static NSString *const kDYYYTabBarHeightKey = @"DYYYTabBarHeight";
 static NSString *const kDYYYABTestTabBarHeightConfigKey = @"hp_tab_bar_custom_height_config";
 
-static dispatch_once_t s_loadOnceToken;
+static BOOL s_hasLoadedLocalData = NO;
 static dispatch_queue_t s_abTestHookQueue;
 static dispatch_once_t s_queueOnceToken;
 static void *s_queueSpecificKey = &s_queueSpecificKey;
@@ -200,7 +200,7 @@ static void DYYYApplyTabBarHeightToCurrentABTestDataIfNeeded(void) {
 + (void)cleanLocalABTestData {
     dispatch_async(DYYYABTestQueue(), ^{
       s_localABTestData = nil;
-      s_loadOnceToken = 0;
+      s_hasLoadedLocalData = NO;
       NSLog(@"[DYYY] 本地ABTest配置已清除");
     });
 }
@@ -208,12 +208,15 @@ static void DYYYApplyTabBarHeightToCurrentABTestDataIfNeeded(void) {
 /**
  * 加载本地ABTest配置文件
  * 只加载文件和处理数据，不负责应用
- * 使用 dispatch_once 确保只加载一次
+ * 在串行队列中确保只加载一次
  * 整个加载过程在队列上异步执行
  */
 + (void)loadLocalABTestConfig {
     dispatch_async(DYYYABTestQueue(), ^{
-      dispatch_once(&s_loadOnceToken, ^{
+      if (s_hasLoadedLocalData) {
+          return;
+      }
+      s_hasLoadedLocalData = YES;
         // 获取存储路径
         NSArray *paths = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES);
         NSString *documentsDirectory = [paths firstObject];
@@ -235,8 +238,9 @@ static void DYYYApplyTabBarHeightToCurrentABTestDataIfNeeded(void) {
         NSData *jsonData = [NSData dataWithContentsOfFile:jsonFilePath options:0 error:&error];
 
         if (jsonData) {
-            NSDictionary *loadedData = [NSJSONSerialization JSONObjectWithData:jsonData options:0 error:&error];
-            if (loadedData && !error) {
+            id jsonObject = [NSJSONSerialization JSONObjectWithData:jsonData options:0 error:&error];
+            if ([jsonObject isKindOfClass:[NSDictionary class]] && !error) {
+                NSDictionary *loadedData = jsonObject;
                 id modeValue = loadedData[@"mode"];
                 s_fileMode = nil;
                 if ([modeValue isKindOfClass:[NSString class]]) {
@@ -247,6 +251,11 @@ static void DYYYApplyTabBarHeightToCurrentABTestDataIfNeeded(void) {
                     NSMutableDictionary *tmp = [loadedData mutableCopy];
                     [tmp removeObjectForKey:@"mode"];
                     actualData = [tmp copy];
+                }
+                if (![actualData isKindOfClass:[NSDictionary class]]) {
+                    NSLog(@"[DYYY] ABTest本地配置 data 字段格式错误");
+                    s_localABTestData = nil;
+                    return;
                 }
                 s_localABTestData = [actualData copy];
                 NSLog(@"[DYYY] ABTest本地配置已从文件加载成功");
@@ -260,7 +269,6 @@ static void DYYYApplyTabBarHeightToCurrentABTestDataIfNeeded(void) {
 
         // 加载失败时的处理
         s_localABTestData = nil;
-      });
     });
 }
 

@@ -12,7 +12,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property(nonatomic, assign) BOOL allowSuccessAnimation;
 
 - (instancetype)initWithFrame:(CGRect)frame;
-- (void)setProgress:(float)progress;
+- (void)setProgress:(CGFloat)progress;
 - (void)show;
 - (void)dismiss;
 - (void)showSuccessAnimation:(void (^)(void))completion;

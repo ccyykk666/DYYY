@@ -165,6 +165,15 @@ static NSString *DYYYStringOrEmpty(id value) {
     return [value isKindOfClass:[NSString class]] ? (NSString *)value : @"";
 }
 
+static NSArray<NSString *> *DYYYBackupIconFileNames(void) {
+    static NSArray<NSString *> *fileNames;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+      fileNames = @[ @"like_before.png", @"like_after.png", @"comment.png", @"unfavorite.png", @"favorite.png", @"share.png", @"tab_plus.png", @"qingping.gif" ];
+    });
+    return fileNames;
+}
+
 static NSMutableDictionary<NSString *, NSMutableDictionary *> *DYYYSettingsSearchIndexMap(void) {
     static NSMutableDictionary<NSString *, NSMutableDictionary *> *map = nil;
     static dispatch_once_t onceToken;
@@ -736,128 +745,6 @@ static void DYYYBuildSettingsSearchIndexIfNeeded(NSArray<AWESettingItemModel *> 
     DYYYApplyFeedNowPlayingIconToCell(self);
 }
 
-%end
-
-// 隐藏掉天气Label
-%hook AWELeftSideBarWeatherLabel
-- (id)initWithFrame:(CGRect)frame {
-    id orig = %orig;
-    self.hidden = YES;
-    return orig;
-}
-
-- (void)drawTextInRect:(CGRect)rect {
-    // 不做任何绘制，彻底隐藏
-}
-%end
-
-%hook AWELeftSideBarWeatherView
-- (void)layoutSubviews {
-    %orig;
-    self.hidden = YES;
-}
-%end
-
-@interface AWELeftSideBarTopIconHorizontalView : UIView
-@end
-
-%hook AWELeftSideBarTopIconHorizontalView
-
-- (void)didMoveToSuperview {
-    %orig;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        NSString *accessibilityLabel = self.accessibilityLabel;
-        if (![accessibilityLabel isEqualToString:@"设置"]) {
-            return;
-        }
-        UIView *targetSuperView = self.superview.superview.superview ?: self;
-        UIButton *oldBtn = (UIButton *)[targetSuperView viewWithTag:232323];
-        if (oldBtn) {
-            [oldBtn removeFromSuperview];
-        }
-        UIButton *dyyyBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-        dyyyBtn.tag = 232323;
-        dyyyBtn.accessibilityLabel = @"DYYYSettingsButton";
-        [dyyyBtn setTitle:@"DYYY" forState:UIControlStateNormal];
-
-        UIColor *titleColor = [DYYYUtils isDarkMode] ? [UIColor whiteColor] : [UIColor blackColor];
-        [dyyyBtn setTitleColor:titleColor forState:UIControlStateNormal];
-
-        dyyyBtn.titleLabel.font = [UIFont boldSystemFontOfSize:15];
-        CGRect frame = self.frame;
-        dyyyBtn.frame = CGRectMake(frame.origin.x + frame.size.width - 40 - 2, 8, 60, 32);
-        dyyyBtn.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
-        dyyyBtn.layer.cornerRadius = 8;
-        dyyyBtn.clipsToBounds = YES;
-        [dyyyBtn addTarget:self action:@selector(dyyyButtonTapped) forControlEvents:UIControlEventTouchUpInside];
-        [targetSuperView addSubview:dyyyBtn];
-    });
-}
-
-%new
-- (void)dyyyButtonTapped {
-    UIViewController *targetVC = [DYYYSettingsHelper findViewController:self];
-    if (!targetVC) {
-        UIWindow *activeWindow = [DYYYUtils getActiveWindow];
-        targetVC = activeWindow.rootViewController ?: [DYYYUtils topView];
-        while (targetVC.presentedViewController) {
-            targetVC = targetVC.presentedViewController;
-        }
-    }
-    BOOL hasAgreed = [DYYYSettingsHelper getUserDefaults:@"DYYYUserAgreementAccepted"];
-    showDYYYSettingsVC(targetVC, hasAgreed);
-}
-%end
-
-@interface AWELeftSideBarTopRightLayoutView : UIView
-@end
-
-%hook AWELeftSideBarTopRightLayoutView
-
-- (void)didMoveToSuperview {
-    %orig;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.3 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        NSString *accessibilityLabel = self.accessibilityLabel;
-        if (![accessibilityLabel isEqualToString:@"设置"]) {
-            return;
-        }
-        UIView *targetSuperView = self.superview.superview.superview ?: self;
-        UIButton *oldBtn = (UIButton *)[targetSuperView viewWithTag:232323];
-        if (oldBtn) {
-            [oldBtn removeFromSuperview];
-        }
-        UIButton *dyyyBtn = [UIButton buttonWithType:UIButtonTypeSystem];
-        dyyyBtn.tag = 232323;
-        dyyyBtn.accessibilityLabel = @"DYYYSettingsButton";
-        [dyyyBtn setTitle:@"DYYY" forState:UIControlStateNormal];
-
-        UIColor *titleColor = [DYYYUtils isDarkMode] ? [UIColor whiteColor] : [UIColor blackColor];
-        [dyyyBtn setTitleColor:titleColor forState:UIControlStateNormal];
-
-        dyyyBtn.titleLabel.font = [UIFont boldSystemFontOfSize:15];
-        CGRect frame = self.frame;
-        dyyyBtn.frame = CGRectMake(frame.origin.x + frame.size.width - 60 - 10 - 2, 8, 60, 32);
-        dyyyBtn.autoresizingMask = UIViewAutoresizingFlexibleLeftMargin;
-        dyyyBtn.layer.cornerRadius = 8;
-        dyyyBtn.clipsToBounds = YES;
-        [dyyyBtn addTarget:self action:@selector(dyyyButtonTapped) forControlEvents:UIControlEventTouchUpInside];
-        [targetSuperView addSubview:dyyyBtn];
-    });
-}
-
-%new
-- (void)dyyyButtonTapped {
-    UIViewController *targetVC = [DYYYSettingsHelper findViewController:self];
-    if (!targetVC) {
-        UIWindow *activeWindow = [DYYYUtils getActiveWindow];
-        targetVC = activeWindow.rootViewController ?: [DYYYUtils topView];
-        while (targetVC.presentedViewController) {
-            targetVC = targetVC.presentedViewController;
-        }
-    }
-    BOOL hasAgreed = [DYYYSettingsHelper getUserDefaults:@"DYYYUserAgreementAccepted"];
-    showDYYYSettingsVC(targetVC, hasAgreed);
-}
 %end
 
 %hook AWELeftSideBarEntranceView
@@ -2986,12 +2873,13 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
         }
       };
 
-      [[NSNotificationCenter defaultCenter] addObserverForName:DYYY_REMOTE_CONFIG_CHANGED_NOTIFICATION
-                                                        object:nil
-                                                         queue:[NSOperationQueue mainQueue]
-                                                    usingBlock:^(NSNotification *_Nonnull note) {
-                                                      refreshConfigConflictState();
-                                                    }];
+      DYYYRemoveRemoteConfigObserver();
+      dyyyRemoteConfigChangedToken = [[NSNotificationCenter defaultCenter] addObserverForName:DYYY_REMOTE_CONFIG_CHANGED_NOTIFICATION
+                                                                                         object:nil
+                                                                                          queue:[NSOperationQueue mainQueue]
+                                                                                     usingBlock:^(__unused NSNotification *note) {
+                                                                                       refreshConfigConflictState();
+                                                                                     }];
 
       for (NSDictionary *dict in hotUpdateSettings) {
           AWESettingItemModel *item = [DYYYSettingsHelper createSettingItem:dict];
@@ -4029,11 +3917,9 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
       NSString *documentsPath = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
       NSString *dyyyFolderPath = [documentsPath stringByAppendingPathComponent:@"DYYY"];
 
-      NSArray *iconFileNames = @[ @"like_before.png", @"like_after.png", @"comment.png", @"unfavorite.png", @"favorite.png", @"share.png", @"tab_plus.png", @"qingping.gif" ];
-
       NSMutableDictionary *iconBase64Dict = [NSMutableDictionary dictionary];
 
-      for (NSString *iconFileName in iconFileNames) {
+      for (NSString *iconFileName in DYYYBackupIconFileNames()) {
           NSString *iconPath = [dyyyFolderPath stringByAppendingPathComponent:iconFileName];
           if ([[NSFileManager defaultManager] fileExistsAtPath:iconPath]) {
               // 读取图片数据并转换为Base64
@@ -4127,6 +4013,14 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
               return;
           }
 
+          static const NSUInteger kDYYYMaximumBackupSize = 25 * 1024 * 1024;
+          if (jsonData.length > kDYYYMaximumBackupSize) {
+              dispatch_async(dispatch_get_main_queue(), ^{
+                [DYYYUtils showToast:@"备份文件过大"];
+              });
+              return;
+          }
+
           NSError *jsonError;
           NSDictionary *dyyySettings = [NSJSONSerialization JSONObjectWithData:jsonData options:0 error:&jsonError];
 
@@ -4147,13 +4041,17 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
                   [fileManager createDirectoryAtPath:dyyyFolderPath withIntermediateDirectories:YES attributes:nil error:nil];
               }
 
-              for (NSString *iconFileName in iconBase64Dict) {
+              NSSet<NSString *> *allowedIconNames = [NSSet setWithArray:DYYYBackupIconFileNames()];
+              for (id iconFileName in iconBase64Dict) {
+                  if (![iconFileName isKindOfClass:[NSString class]] || ![allowedIconNames containsObject:iconFileName]) {
+                      continue;
+                  }
                   NSString *base64String = iconBase64Dict[iconFileName];
                   if (![base64String isKindOfClass:[NSString class]]) {
                       continue;
                   }
                   NSData *imageData = [[NSData alloc] initWithBase64EncodedString:base64String options:0];
-                  if (imageData) {
+                  if (imageData && imageData.length <= 10 * 1024 * 1024) {
                       NSString *iconPath = [dyyyFolderPath stringByAppendingPathComponent:iconFileName];
                       [imageData writeToFile:iconPath atomically:YES];
                   }
@@ -4165,8 +4063,15 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
           }
 
           NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-          for (NSString *key in dyyySettings) {
-              [defaults setObject:dyyySettings[key] forKey:key];
+          for (id key in dyyySettings) {
+              if (![key isKindOfClass:[NSString class]] || ![key hasPrefix:@"DYYY"]) {
+                  continue;
+              }
+              id value = dyyySettings[key];
+              if (value == [NSNull null] || ![NSPropertyListSerialization propertyList:value isValidForFormat:NSPropertyListBinaryFormat_v1_0]) {
+                  continue;
+              }
+              [defaults setObject:value forKey:key];
           }
 
           dispatch_async(dispatch_get_main_queue(), ^{

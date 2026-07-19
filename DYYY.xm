@@ -29,6 +29,19 @@
 #import "DYYYToast.h"
 #import "DYYYUtils.h"
 
+#if __IPHONE_OS_VERSION_MAX_ALLOWED < 170000
+typedef NS_ENUM(NSInteger, UIImageDynamicRange) {
+    UIImageDynamicRangeUnspecified = -1,
+    UIImageDynamicRangeStandard = 0,
+    UIImageDynamicRangeConstrainedHigh = 1,
+    UIImageDynamicRangeHigh = 2,
+};
+
+@interface UIImageView (DYYYDynamicRangeCompatibility)
+@property(nonatomic, assign) UIImageDynamicRange preferredImageDynamicRange;
+@end
+#endif
+
 static CGFloat gStartY = 0.0;
 static CGFloat gStartVal = 0.0;
 static DYEdgeMode gMode = DYEdgeModeNone;
@@ -3761,10 +3774,6 @@ static void DYYYDisableAVPlayerItemHDRMetadata(AVPlayerItem *item) {
     if (cityCode.length > 0) {
         displayLocation = [CityManager.sharedInstance getCityNameWithCode:cityCode];
 
-        if (!displayLocation && regionCode.length > 0) {
-            displayLocation = [CityManager.sharedInstance getCountryNameWithCode:regionCode];
-        }
-
         if (!displayLocation) {
             @synchronized(inFlight) {
                 if ([inFlight containsObject:cityCode]) {
@@ -3782,25 +3791,49 @@ static void DYYYDisableAVPlayerItemHDRMetadata(AVPlayerItem *item) {
                     NSString *apiLocation = nil;
 
                     if (!error && locationInfo) {
-                        NSString *cityName = locationInfo[@"adminName1"];
+                        NSString *localName = locationInfo[@"name"];
+                        NSString *adminName1 = locationInfo[@"adminName1"];
                         NSString *countryName = locationInfo[@"countryName"];
 
-                        if (cityName && countryName) {
-                            if ([cityName isEqualToString:countryName]) {
-                                apiLocation = countryName;
+                        if (![localName isKindOfClass:[NSString class]]) {
+                            localName = nil;
+                        }
+                        if (![adminName1 isKindOfClass:[NSString class]]) {
+                            adminName1 = nil;
+                        }
+                        if (![countryName isKindOfClass:[NSString class]]) {
+                            countryName = nil;
+                        }
+
+                        if (countryName.length > 0) {
+                            if (adminName1.length > 0 && localName.length > 0 && ![countryName isEqualToString:localName]) {
+                                if ([adminName1 isEqualToString:localName]) {
+                                    apiLocation = [NSString stringWithFormat:@"%@ %@", countryName, localName];
+                                } else {
+                                    apiLocation = [NSString stringWithFormat:@"%@ %@ %@", countryName, adminName1, localName];
+                                }
+                            } else if (localName.length > 0 && ![countryName isEqualToString:localName]) {
+                                apiLocation = [NSString stringWithFormat:@"%@ %@", countryName, localName];
+                            } else if (adminName1.length > 0 && ![countryName isEqualToString:adminName1]) {
+                                apiLocation = [NSString stringWithFormat:@"%@ %@", countryName, adminName1];
                             } else {
-                                apiLocation = [NSString stringWithFormat:@"%@ %@", countryName, cityName];
+                                apiLocation = countryName;
                             }
-                        } else if (countryName) {
-                            apiLocation = countryName;
-                        } else if (cityName) {
-                            apiLocation = cityName;
+                        } else if (localName.length > 0) {
+                            apiLocation = localName;
+                        } else if (adminName1.length > 0) {
+                            apiLocation = adminName1;
                         }
                     }
 
-                    if (apiLocation) {
+                    if (apiLocation.length > 0) {
                         [locationCache setObject:apiLocation forKey:cacheKey];
                         updateLabelWithLocation(label, apiLocation);
+                    } else {
+                        if (regionCode.length > 0) {
+                            NSString *fallbackCountry = [CityManager.sharedInstance getCountryNameWithCode:regionCode];
+                            updateLabelWithLocation(label, fallbackCountry);
+                        }
                     }
                 });
             }];
@@ -4555,7 +4588,10 @@ static NSArray<NSString *> *dyyy_qualityRank = nil;
 // 强制启用新版抖音长按 UI（现代风）
 %hook AWELongPressPanelDataManager
 + (BOOL)enableModernLongPressPanelConfigWithSceneIdentifier:(id)arg1 {
-    return DYYYGetBool(@"DYYYEnableModernPanel");
+    if (DYYYGetBool(@"DYYYEnableModernPanel")) {
+        return YES;
+    }
+    return %orig;
 }
 %end
 
@@ -4568,12 +4604,13 @@ static NSArray<NSString *> *dyyy_qualityRank = nil;
     BOOL forceBlur = DYYYGetBool(@"DYYYLongPressPanelBlur");
     BOOL forceDark = DYYYGetBool(@"DYYYLongPressPanelDark");
 
-    if (forceBlur && forceDark) {
+    if (forceDark) {
         return 1;
-    } else if (!forceBlur && !forceDark) {
-        BOOL isDarkMode = [DYYYUtils isDarkMode];
-        return isDarkMode ? 1 : 2;
     }
+    if (forceBlur) {
+        return 2;
+    }
+    return [DYYYUtils isDarkMode] ? 1 : 2;
 }
 %end
 
@@ -4586,12 +4623,13 @@ static NSArray<NSString *> *dyyy_qualityRank = nil;
     BOOL forceBlur = DYYYGetBool(@"DYYYLongPressPanelBlur");
     BOOL forceDark = DYYYGetBool(@"DYYYLongPressPanelDark");
 
-    if (forceBlur && forceDark) {
+    if (forceDark) {
         return 1;
-    } else if (!forceBlur && !forceDark) {
-        BOOL isDarkMode = [DYYYUtils isDarkMode];
-        return isDarkMode ? 1 : 2;
     }
+    if (forceBlur) {
+        return 2;
+    }
+    return [DYYYUtils isDarkMode] ? 1 : 2;
 }
 %end
 
@@ -5981,7 +6019,10 @@ static void DYYYApplyAvatarFollowPromptSettingsWithRetry(id owner) {
 %hook AWESearchAnchorListModel
 
 - (BOOL)hideWords {
-    return DYYYGetBool(@"DYYYHideCommentViews");
+    if (DYYYGetBool(@"DYYYHideCommentViews")) {
+        return YES;
+    }
+    return %orig;
 }
 
 %end
@@ -6118,21 +6159,23 @@ static void DYYYApplyAvatarFollowPromptSettingsWithRetry(id owner) {
 %hook AWELeftSideBarEntranceView
 
 - (void)setRedDot:(id)redDot {
-    %orig(nil);
+    %orig(DYYYGetBool(@"DYYYHideSidebarDot") ? nil : redDot);
 }
 
 - (void)setNumericalRedDot:(id)numericalRedDot {
-    %orig(nil);
+    %orig(DYYYGetBool(@"DYYYHideSidebarDot") ? nil : numericalRedDot);
 }
 
 - (void)layoutSubviews {
     %orig;
 
     // 隐藏左侧边栏的 badge
-    for (UIView *subview in self.subviews) {
-        if ([subview isKindOfClass:%c(DUXBadge)]) {
-            subview.hidden = YES;
-            break;
+    if (DYYYGetBool(@"DYYYHideSidebarDot")) {
+        for (UIView *subview in self.subviews) {
+            if ([subview isKindOfClass:%c(DUXBadge)]) {
+                subview.hidden = YES;
+                break;
+            }
         }
     }
 
@@ -7885,12 +7928,12 @@ static NSHashTable *processedParentViews = nil;
 %hook AWEHPTopBarCTAItemView
 
 - (void)showRedDot {
-    if (![[NSUserDefaults standardUserDefaults] objectForKey:@"DYYYHideSidebarDot"])
+    if (!DYYYGetBool(@"DYYYHideSidebarDot"))
         %orig;
 }
 
 - (void)hideCountRedDot {
-    if (![[NSUserDefaults standardUserDefaults] objectForKey:@"DYYYHideSidebarDot"])
+    if (!DYYYGetBool(@"DYYYHideSidebarDot"))
         %orig;
 }
 
@@ -10598,6 +10641,7 @@ static Class plusInnerButtonClass = nil;
 static Class tabBarButtonClass = nil;
 
 + (void)initialize {
+    %orig;
     if (self == [%c(AWENormalModeTabBar) class]) {
         barBackgroundClass = NSClassFromString(@"_UIBarBackground");
         generalButtonClass = %c(AWENormalModeTabBarGeneralButton);
@@ -11370,25 +11414,26 @@ static Class tabBarButtonClass = nil;
         return;
     }
 
-    BOOL enableBlur = DYYYGetBool(@"DYYYEnableCommentBlur");
     BOOL enableFS = DYYYGetBool(@"DYYYEnableFullScreen");
+    if (!enableFS) {
+        %orig(frame);
+        return;
+    }
 
     UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:self];
-    Class DetailVCClass = NSClassFromString(@"AWEMixVideoPanelDetailTableViewController");
-    Class PlayVCClass1 = NSClassFromString(@"AWEAwemePlayVideoViewController");
-    Class PlayVCClass2 = NSClassFromString(@"AWEDPlayerFeedPlayerViewController");
-    Class PlayVCClass3 = NSClassFromString(@"AWEDPlayerViewController_Merge");
+    static Class PlayVCClass1;
+    static Class PlayVCClass2;
+    static Class PlayVCClass3;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+      PlayVCClass1 = NSClassFromString(@"AWEAwemePlayVideoViewController");
+      PlayVCClass2 = NSClassFromString(@"AWEDPlayerFeedPlayerViewController");
+      PlayVCClass3 = NSClassFromString(@"AWEDPlayerViewController_Merge");
+    });
 
-    BOOL isDetailVC = (DetailVCClass && [vc isKindOfClass:DetailVCClass]);
     BOOL isPlayVC = ((PlayVCClass1 && [vc isKindOfClass:PlayVCClass1]) ||
                      (PlayVCClass2 && [vc isKindOfClass:PlayVCClass2]) ||
                      (PlayVCClass3 && [vc isKindOfClass:PlayVCClass3]));
-
-    if (isPlayVC && enableBlur) {
-        if (frame.origin.x != 0) {
-            return;
-        }
-    }
 
     if (isPlayVC && enableFS) {
         if (frame.origin.x != 0 && frame.origin.y != 0) {
@@ -11828,21 +11873,9 @@ static Class tabBarButtonClass = nil;
 %hook UIViewController
 - (void)viewWillAppear:(BOOL)animated {
     %orig;
-    isAppInTransition = YES;
     if (hideButton && hideButton.isElementsHidden) {
         [hideButton hideUIElements];
     }
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-      isAppInTransition = NO;
-    });
-}
-
-- (void)viewWillDisappear:(BOOL)animated {
-    %orig;
-    isAppInTransition = YES;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-      isAppInTransition = NO;
-    });
 }
 %end
 
@@ -12074,6 +12107,7 @@ static Class TagViewClass = nil;
 }
 
 + (void)initialize {
+    %orig;
     GuideViewClass = NSClassFromString(@"AWELivePrestreamGuideView");
     MuteViewClass = NSClassFromString(@"AFDCancelMuteAwemeView");
     TagViewClass = NSClassFromString(@"AWELiveFeedLabelTagView");
@@ -12275,6 +12309,7 @@ static Class TagViewClass = nil;
 %hook IESLiveStackView
 
 + (void)initialize {
+    %orig;
     GuideViewClass = NSClassFromString(@"AWELivePrestreamGuideView");
     MuteViewClass = NSClassFromString(@"AFDCancelMuteAwemeView");
     TagViewClass = NSClassFromString(@"AWELiveFeedLabelTagView");
@@ -12365,7 +12400,9 @@ static Class TagViewClass = nil;
         if (shouldShiftUp) {
             ty -= targetHeight;
         }
-        targetTransform = CGAffineTransformMakeTranslation(0, -20);
+        // 仅在首页全屏开启时按底栏高度上移；普通推荐页保持系统原始位置。
+        // 不再使用固定 -20pt，否则直播标签、昵称和文案会被无条件抬高。
+        targetTransform = CGAffineTransformMake(1.0, 0, 0, currentScale, tx, ty);
 
         if (!CGAffineTransformEqualToTransform(self.transform, targetTransform)) {
             self.transform = targetTransform;
@@ -12875,51 +12912,10 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
             }
         }
 
-        id filteredModule = [self filterModuleItems:moduleModel];
-        if (filteredModule) {
-            [filteredModels addObject:filteredModule];
-        }
+        [filteredModels addObject:moduleModel];
     }
 
     return [filteredModels copy];
-}
-
-%new
-- (id)filterModuleItems:(id)moduleModel {
-    if (![moduleModel respondsToSelector:@selector(items)] || ![moduleModel respondsToSelector:@selector(moduleID)]) {
-        return moduleModel;
-    }
-
-    NSString *moduleID = [moduleModel moduleID];
-    NSArray *originalItems = [moduleModel items];
-
-    if ([moduleID isEqualToString:@"top_area"]) {
-        // 只保留天气、设置、扫一扫
-        NSMutableArray *filteredItems = [NSMutableArray array];
-
-        for (id item in originalItems) {
-            if ([item respondsToSelector:@selector(businessType)]) {
-                NSString *businessType = [item businessType];
-
-                // 保留需要的组件
-                if ([businessType isEqualToString:@"weather_time_tip_component"] || [businessType isEqualToString:@"setting_page_component"] ||
-                    [businessType isEqualToString:@"top_area_vertical_cell"]) {
-                    [filteredItems addObject:item];
-                }
-            }
-        }
-
-        // 创建新的模块对象，保持原有属性但更新items
-        if ([moduleModel respondsToSelector:@selector(copy)]) {
-            id newModule = [moduleModel copy];
-            if ([newModule respondsToSelector:@selector(setItems:)]) {
-                [newModule setItems:[filteredItems copy]];
-            }
-            return newModule;
-        }
-    }
-
-    return moduleModel;
 }
 
 %end
@@ -13038,7 +13034,7 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
 %end
 
 
-// 隐藏键盘 AI
+// 隐藏键盘 AI（旧版兼容）
 static __weak UIView *cachedHideView = nil;
 static void hideParentViewsSubviews(UIView *view) {
     if (!view)
@@ -13058,7 +13054,7 @@ static void hideParentViewsSubviews(UIView *view) {
     }
 }
 
-// 递归查找目标视图
+// 递归查找旧版目标视图
 static void findTargetViewInView(UIView *view) {
     if (cachedHideView)
         return;
@@ -13073,12 +13069,101 @@ static void findTargetViewInView(UIView *view) {
     }
 }
 
+// 39.6.0 的解密 IPA 中，语音入口由 AWEVoiceSearchManager 的
+// canShowVoiceSearchEntrance 属性控制，实际视图类型为
+// AWESearchKeyboardVoiceSearchEntranceView。直接拦截这两层，避免依赖通知时机和视图层级。
+static void DYYYForceHideKeyboardVoiceSearchView(UIView *view) {
+    if (!view || !DYYYGetBool(@"DYYYHideKeyboardAI")) {
+        return;
+    }
+    view.hidden = YES;
+    view.userInteractionEnabled = NO;
+}
+
+%group DYYYVoiceSearchManagerGroup
+
+%hook DYYYVoiceSearchManager
+
+- (BOOL)canShowVoiceSearchEntrance {
+    return DYYYGetBool(@"DYYYHideKeyboardAI") ? NO : %orig;
+}
+
+- (void)setCanShowVoiceSearchEntrance:(BOOL)canShow {
+    %orig(DYYYGetBool(@"DYYYHideKeyboardAI") ? NO : canShow);
+}
+
+%end
+
+%end
+
+%group DYYYVoiceSearchViewGroup
+
+%hook DYYYVoiceSearchEntranceView
+
+- (void)setHidden:(BOOL)hidden {
+    %orig(DYYYGetBool(@"DYYYHideKeyboardAI") ? YES : hidden);
+}
+
+- (void)didMoveToWindow {
+    %orig;
+    DYYYForceHideKeyboardVoiceSearchView((UIView *)self);
+}
+
+- (void)layoutSubviews {
+    %orig;
+    DYYYForceHideKeyboardVoiceSearchView((UIView *)self);
+}
+
+%end
+
+%end
+
+static BOOL dyyyVoiceSearchManagerHookInstalled = NO;
+static BOOL dyyyVoiceSearchViewHookInstalled = NO;
+
+static void DYYYInstallVoiceSearchHooksIfAvailable(void) {
+    Class voiceSearchManagerClass = objc_getClass("AWEVoiceSearchManager");
+    if (!dyyyVoiceSearchManagerHookInstalled && voiceSearchManagerClass) {
+        dyyyVoiceSearchManagerHookInstalled = YES;
+        %init(DYYYVoiceSearchManagerGroup, DYYYVoiceSearchManager = voiceSearchManagerClass);
+    }
+
+    Class voiceSearchEntranceViewClass = objc_getClass("AWESearchKeyboardVoiceSearchEntranceView");
+    if (!dyyyVoiceSearchViewHookInstalled && voiceSearchEntranceViewClass) {
+        dyyyVoiceSearchViewHookInstalled = YES;
+        %init(DYYYVoiceSearchViewGroup, DYYYVoiceSearchEntranceView = voiceSearchEntranceViewClass);
+    }
+}
+
+static void DYYYHideLoadedVoiceSearchEntranceViews(UIView *view) {
+    if (!view || !DYYYGetBool(@"DYYYHideKeyboardAI")) {
+        return;
+    }
+
+    Class entranceViewClass = objc_getClass("AWESearchKeyboardVoiceSearchEntranceView");
+    if (entranceViewClass && [view isKindOfClass:entranceViewClass]) {
+        DYYYForceHideKeyboardVoiceSearchView(view);
+    }
+
+    for (UIView *subview in view.subviews) {
+        DYYYHideLoadedVoiceSearchEntranceViews(subview);
+    }
+}
+
 %ctor {
     [[NSUserDefaults standardUserDefaults] registerDefaults:@{
         @"DYYYDisableFeedNowPlayingInfo" : @YES
     }];
 
     DYYYMigrateCombinedHDRModeIfNeeded();
+
+    DYYYInstallVoiceSearchHooksIfAvailable();
+    [[NSNotificationCenter defaultCenter] addObserverForName:NSBundleDidLoadNotification
+                                                      object:nil
+                                                       queue:[NSOperationQueue mainQueue]
+                                                  usingBlock:^(__unused NSNotification *notification) {
+                                                    DYYYInstallVoiceSearchHooksIfAvailable();
+                                                  }];
 
     Class interactionBaseLabelClass = objc_getClass("AWECommentSwiftBizUI.CommentInteractionBaseLabel");
     if (interactionBaseLabelClass) {
@@ -13158,6 +13243,10 @@ static void findTargetViewInView(UIView *view) {
                                                          queue:[NSOperationQueue mainQueue]
                                                     usingBlock:^(NSNotification *notification) {
                                                       if (DYYYGetBool(@"DYYYHideKeyboardAI")) {
+                                                          DYYYInstallVoiceSearchHooksIfAvailable();
+                                                          for (UIWindow *window in [UIApplication sharedApplication].windows) {
+                                                              DYYYHideLoadedVoiceSearchEntranceViews(window);
+                                                          }
                                                           if (cachedHideView) {
                                                               for (UIView *subview in cachedHideView.subviews) {
                                                                   subview.hidden = YES;
