@@ -10884,7 +10884,7 @@ static void DYYYRestoreNativeSystemTabBar(AWENormalModeTabBar *tabBar) {
     objc_setAssociatedObject(tabBar, &kDYYYNativeTabMutationKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     objc_setAssociatedObject(tabBar, &kDYYYNativeTabActiveKey, nil, OBJC_ASSOCIATION_ASSIGN);
     UITabBarController *controller = DYYYNativeTabBarController(tabBar);
-    DYYYNativeTabMode mode = [objc_getAssociatedObject(tabBar, &kDYYYNativeTabModeKey) unsignedIntegerValue];
+    DYYYNativeTabMode mode = (DYYYNativeTabMode)[objc_getAssociatedObject(tabBar, &kDYYYNativeTabModeKey) unsignedIntegerValue];
     if (mode == DYYYNativeTabModeVisualFallback) {
         id originalItems = objc_getAssociatedObject(tabBar, &kDYYYNativeTabOriginalItemsKey);
         if (originalItems) {
