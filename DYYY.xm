@@ -4588,7 +4588,10 @@ static NSArray<NSString *> *dyyy_qualityRank = nil;
 // 强制启用新版抖音长按 UI（现代风）
 %hook AWELongPressPanelDataManager
 + (BOOL)enableModernLongPressPanelConfigWithSceneIdentifier:(id)arg1 {
-    return DYYYGetBool(@"DYYYEnableModernPanel");
+    if (DYYYGetBool(@"DYYYEnableModernPanel")) {
+        return YES;
+    }
+    return %orig;
 }
 %end
 
@@ -4601,12 +4604,13 @@ static NSArray<NSString *> *dyyy_qualityRank = nil;
     BOOL forceBlur = DYYYGetBool(@"DYYYLongPressPanelBlur");
     BOOL forceDark = DYYYGetBool(@"DYYYLongPressPanelDark");
 
-    if (forceBlur && forceDark) {
+    if (forceDark) {
         return 1;
-    } else if (!forceBlur && !forceDark) {
-        BOOL isDarkMode = [DYYYUtils isDarkMode];
-        return isDarkMode ? 1 : 2;
     }
+    if (forceBlur) {
+        return 2;
+    }
+    return [DYYYUtils isDarkMode] ? 1 : 2;
 }
 %end
 
@@ -4619,12 +4623,13 @@ static NSArray<NSString *> *dyyy_qualityRank = nil;
     BOOL forceBlur = DYYYGetBool(@"DYYYLongPressPanelBlur");
     BOOL forceDark = DYYYGetBool(@"DYYYLongPressPanelDark");
 
-    if (forceBlur && forceDark) {
+    if (forceDark) {
         return 1;
-    } else if (!forceBlur && !forceDark) {
-        BOOL isDarkMode = [DYYYUtils isDarkMode];
-        return isDarkMode ? 1 : 2;
     }
+    if (forceBlur) {
+        return 2;
+    }
+    return [DYYYUtils isDarkMode] ? 1 : 2;
 }
 %end
 
@@ -6014,7 +6019,10 @@ static void DYYYApplyAvatarFollowPromptSettingsWithRetry(id owner) {
 %hook AWESearchAnchorListModel
 
 - (BOOL)hideWords {
-    return DYYYGetBool(@"DYYYHideCommentViews");
+    if (DYYYGetBool(@"DYYYHideCommentViews")) {
+        return YES;
+    }
+    return %orig;
 }
 
 %end
@@ -6151,21 +6159,23 @@ static void DYYYApplyAvatarFollowPromptSettingsWithRetry(id owner) {
 %hook AWELeftSideBarEntranceView
 
 - (void)setRedDot:(id)redDot {
-    %orig(nil);
+    %orig(DYYYGetBool(@"DYYYHideSidebarDot") ? nil : redDot);
 }
 
 - (void)setNumericalRedDot:(id)numericalRedDot {
-    %orig(nil);
+    %orig(DYYYGetBool(@"DYYYHideSidebarDot") ? nil : numericalRedDot);
 }
 
 - (void)layoutSubviews {
     %orig;
 
     // 隐藏左侧边栏的 badge
-    for (UIView *subview in self.subviews) {
-        if ([subview isKindOfClass:%c(DUXBadge)]) {
-            subview.hidden = YES;
-            break;
+    if (DYYYGetBool(@"DYYYHideSidebarDot")) {
+        for (UIView *subview in self.subviews) {
+            if ([subview isKindOfClass:%c(DUXBadge)]) {
+                subview.hidden = YES;
+                break;
+            }
         }
     }
 
@@ -7918,12 +7928,12 @@ static NSHashTable *processedParentViews = nil;
 %hook AWEHPTopBarCTAItemView
 
 - (void)showRedDot {
-    if (![[NSUserDefaults standardUserDefaults] objectForKey:@"DYYYHideSidebarDot"])
+    if (!DYYYGetBool(@"DYYYHideSidebarDot"))
         %orig;
 }
 
 - (void)hideCountRedDot {
-    if (![[NSUserDefaults standardUserDefaults] objectForKey:@"DYYYHideSidebarDot"])
+    if (!DYYYGetBool(@"DYYYHideSidebarDot"))
         %orig;
 }
 
@@ -10631,6 +10641,7 @@ static Class plusInnerButtonClass = nil;
 static Class tabBarButtonClass = nil;
 
 + (void)initialize {
+    %orig;
     if (self == [%c(AWENormalModeTabBar) class]) {
         barBackgroundClass = NSClassFromString(@"_UIBarBackground");
         generalButtonClass = %c(AWENormalModeTabBarGeneralButton);
@@ -11403,25 +11414,26 @@ static Class tabBarButtonClass = nil;
         return;
     }
 
-    BOOL enableBlur = DYYYGetBool(@"DYYYEnableCommentBlur");
     BOOL enableFS = DYYYGetBool(@"DYYYEnableFullScreen");
+    if (!enableFS) {
+        %orig(frame);
+        return;
+    }
 
     UIViewController *vc = [DYYYUtils firstAvailableViewControllerFromView:self];
-    Class DetailVCClass = NSClassFromString(@"AWEMixVideoPanelDetailTableViewController");
-    Class PlayVCClass1 = NSClassFromString(@"AWEAwemePlayVideoViewController");
-    Class PlayVCClass2 = NSClassFromString(@"AWEDPlayerFeedPlayerViewController");
-    Class PlayVCClass3 = NSClassFromString(@"AWEDPlayerViewController_Merge");
+    static Class PlayVCClass1;
+    static Class PlayVCClass2;
+    static Class PlayVCClass3;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+      PlayVCClass1 = NSClassFromString(@"AWEAwemePlayVideoViewController");
+      PlayVCClass2 = NSClassFromString(@"AWEDPlayerFeedPlayerViewController");
+      PlayVCClass3 = NSClassFromString(@"AWEDPlayerViewController_Merge");
+    });
 
-    BOOL isDetailVC = (DetailVCClass && [vc isKindOfClass:DetailVCClass]);
     BOOL isPlayVC = ((PlayVCClass1 && [vc isKindOfClass:PlayVCClass1]) ||
                      (PlayVCClass2 && [vc isKindOfClass:PlayVCClass2]) ||
                      (PlayVCClass3 && [vc isKindOfClass:PlayVCClass3]));
-
-    if (isPlayVC && enableBlur) {
-        if (frame.origin.x != 0) {
-            return;
-        }
-    }
 
     if (isPlayVC && enableFS) {
         if (frame.origin.x != 0 && frame.origin.y != 0) {
@@ -11861,21 +11873,9 @@ static Class tabBarButtonClass = nil;
 %hook UIViewController
 - (void)viewWillAppear:(BOOL)animated {
     %orig;
-    isAppInTransition = YES;
     if (hideButton && hideButton.isElementsHidden) {
         [hideButton hideUIElements];
     }
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-      isAppInTransition = NO;
-    });
-}
-
-- (void)viewWillDisappear:(BOOL)animated {
-    %orig;
-    isAppInTransition = YES;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-      isAppInTransition = NO;
-    });
 }
 %end
 
@@ -12107,6 +12107,7 @@ static Class TagViewClass = nil;
 }
 
 + (void)initialize {
+    %orig;
     GuideViewClass = NSClassFromString(@"AWELivePrestreamGuideView");
     MuteViewClass = NSClassFromString(@"AFDCancelMuteAwemeView");
     TagViewClass = NSClassFromString(@"AWELiveFeedLabelTagView");
@@ -12308,6 +12309,7 @@ static Class TagViewClass = nil;
 %hook IESLiveStackView
 
 + (void)initialize {
+    %orig;
     GuideViewClass = NSClassFromString(@"AWELivePrestreamGuideView");
     MuteViewClass = NSClassFromString(@"AFDCancelMuteAwemeView");
     TagViewClass = NSClassFromString(@"AWELiveFeedLabelTagView");
@@ -12910,51 +12912,10 @@ static NSString *const kHideRecentUsersKey = @"DYYYHideSidebarRecentUsers";
             }
         }
 
-        id filteredModule = [self filterModuleItems:moduleModel];
-        if (filteredModule) {
-            [filteredModels addObject:filteredModule];
-        }
+        [filteredModels addObject:moduleModel];
     }
 
     return [filteredModels copy];
-}
-
-%new
-- (id)filterModuleItems:(id)moduleModel {
-    if (![moduleModel respondsToSelector:@selector(items)] || ![moduleModel respondsToSelector:@selector(moduleID)]) {
-        return moduleModel;
-    }
-
-    NSString *moduleID = [moduleModel moduleID];
-    NSArray *originalItems = [moduleModel items];
-
-    if ([moduleID isEqualToString:@"top_area"]) {
-        // 只保留天气、设置、扫一扫
-        NSMutableArray *filteredItems = [NSMutableArray array];
-
-        for (id item in originalItems) {
-            if ([item respondsToSelector:@selector(businessType)]) {
-                NSString *businessType = [item businessType];
-
-                // 保留需要的组件
-                if ([businessType isEqualToString:@"weather_time_tip_component"] || [businessType isEqualToString:@"setting_page_component"] ||
-                    [businessType isEqualToString:@"top_area_vertical_cell"]) {
-                    [filteredItems addObject:item];
-                }
-            }
-        }
-
-        // 创建新的模块对象，保持原有属性但更新items
-        if ([moduleModel respondsToSelector:@selector(copy)]) {
-            id newModule = [moduleModel copy];
-            if ([newModule respondsToSelector:@selector(setItems:)]) {
-                [newModule setItems:[filteredItems copy]];
-            }
-            return newModule;
-        }
-    }
-
-    return moduleModel;
 }
 
 %end

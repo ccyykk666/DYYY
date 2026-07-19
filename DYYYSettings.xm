@@ -165,6 +165,15 @@ static NSString *DYYYStringOrEmpty(id value) {
     return [value isKindOfClass:[NSString class]] ? (NSString *)value : @"";
 }
 
+static NSArray<NSString *> *DYYYBackupIconFileNames(void) {
+    static NSArray<NSString *> *fileNames;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+      fileNames = @[ @"like_before.png", @"like_after.png", @"comment.png", @"unfavorite.png", @"favorite.png", @"share.png", @"tab_plus.png", @"qingping.gif" ];
+    });
+    return fileNames;
+}
+
 static NSMutableDictionary<NSString *, NSMutableDictionary *> *DYYYSettingsSearchIndexMap(void) {
     static NSMutableDictionary<NSString *, NSMutableDictionary *> *map = nil;
     static dispatch_once_t onceToken;
@@ -2864,12 +2873,13 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
         }
       };
 
-      [[NSNotificationCenter defaultCenter] addObserverForName:DYYY_REMOTE_CONFIG_CHANGED_NOTIFICATION
-                                                        object:nil
-                                                         queue:[NSOperationQueue mainQueue]
-                                                    usingBlock:^(NSNotification *_Nonnull note) {
-                                                      refreshConfigConflictState();
-                                                    }];
+      DYYYRemoveRemoteConfigObserver();
+      dyyyRemoteConfigChangedToken = [[NSNotificationCenter defaultCenter] addObserverForName:DYYY_REMOTE_CONFIG_CHANGED_NOTIFICATION
+                                                                                         object:nil
+                                                                                          queue:[NSOperationQueue mainQueue]
+                                                                                     usingBlock:^(__unused NSNotification *note) {
+                                                                                       refreshConfigConflictState();
+                                                                                     }];
 
       for (NSDictionary *dict in hotUpdateSettings) {
           AWESettingItemModel *item = [DYYYSettingsHelper createSettingItem:dict];
@@ -3907,11 +3917,9 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
       NSString *documentsPath = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES) firstObject];
       NSString *dyyyFolderPath = [documentsPath stringByAppendingPathComponent:@"DYYY"];
 
-      NSArray *iconFileNames = @[ @"like_before.png", @"like_after.png", @"comment.png", @"unfavorite.png", @"favorite.png", @"share.png", @"tab_plus.png", @"qingping.gif" ];
-
       NSMutableDictionary *iconBase64Dict = [NSMutableDictionary dictionary];
 
-      for (NSString *iconFileName in iconFileNames) {
+      for (NSString *iconFileName in DYYYBackupIconFileNames()) {
           NSString *iconPath = [dyyyFolderPath stringByAppendingPathComponent:iconFileName];
           if ([[NSFileManager defaultManager] fileExistsAtPath:iconPath]) {
               // 读取图片数据并转换为Base64
@@ -4005,6 +4013,14 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
               return;
           }
 
+          static const NSUInteger kDYYYMaximumBackupSize = 25 * 1024 * 1024;
+          if (jsonData.length > kDYYYMaximumBackupSize) {
+              dispatch_async(dispatch_get_main_queue(), ^{
+                [DYYYUtils showToast:@"备份文件过大"];
+              });
+              return;
+          }
+
           NSError *jsonError;
           NSDictionary *dyyySettings = [NSJSONSerialization JSONObjectWithData:jsonData options:0 error:&jsonError];
 
@@ -4025,13 +4041,17 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
                   [fileManager createDirectoryAtPath:dyyyFolderPath withIntermediateDirectories:YES attributes:nil error:nil];
               }
 
-              for (NSString *iconFileName in iconBase64Dict) {
+              NSSet<NSString *> *allowedIconNames = [NSSet setWithArray:DYYYBackupIconFileNames()];
+              for (id iconFileName in iconBase64Dict) {
+                  if (![iconFileName isKindOfClass:[NSString class]] || ![allowedIconNames containsObject:iconFileName]) {
+                      continue;
+                  }
                   NSString *base64String = iconBase64Dict[iconFileName];
                   if (![base64String isKindOfClass:[NSString class]]) {
                       continue;
                   }
                   NSData *imageData = [[NSData alloc] initWithBase64EncodedString:base64String options:0];
-                  if (imageData) {
+                  if (imageData && imageData.length <= 10 * 1024 * 1024) {
                       NSString *iconPath = [dyyyFolderPath stringByAppendingPathComponent:iconFileName];
                       [imageData writeToFile:iconPath atomically:YES];
                   }
@@ -4043,8 +4063,15 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
           }
 
           NSUserDefaults *defaults = [NSUserDefaults standardUserDefaults];
-          for (NSString *key in dyyySettings) {
-              [defaults setObject:dyyySettings[key] forKey:key];
+          for (id key in dyyySettings) {
+              if (![key isKindOfClass:[NSString class]] || ![key hasPrefix:@"DYYY"]) {
+                  continue;
+              }
+              id value = dyyySettings[key];
+              if (value == [NSNull null] || ![NSPropertyListSerialization propertyList:value isValidForFormat:NSPropertyListBinaryFormat_v1_0]) {
+                  continue;
+              }
+              [defaults setObject:value forKey:key];
           }
 
           dispatch_async(dispatch_get_main_queue(), ^{

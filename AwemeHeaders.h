@@ -209,7 +209,6 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 - (void)fetchConfigurationWithRetry:(BOOL)arg1 completion:(id)arg2;
 - (void)incrementalUpdateData:(id)arg1 unchangedKeyList:(id)arg2;
 - (void)overrideABTestData:(id)arg1 needCleanCache:(BOOL)arg2;
-- (void)setAbTestData:(id)arg1;
 - (void)_saveABTestData:(id)arg1;
 - (id)getValueOfConsistentABTestWithKey:(id)arg1;
 + (id)sharedManager;
@@ -297,22 +296,12 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 - (id)colorFromHexString:(id)arg0 baseColor:(id)arg1;
 - (void)setTextColor:(id)arg0;
 - (id)initWithFrame:(id)arg0 textColor:(id)arg1 type:(long long)arg2;
-- (id)danmakuText;
-- (void)setDanmakuText:(id)arg0;
-- (id)danmakuStyleList;
 - (void)drawUnderLineWithStart:(long long)arg0 len:(long long)arg1;
-- (void)setDanmakuStyleList:(id)arg0;
-- (double)strokeWidth;
 - (id)accessibilityLabel;
-- (void)setStrokeWidth:(double)arg0;
 - (void)setAccessibilityLabel:(id)arg0;
-- (void)setStrokeColor:(id)arg0;
-- (id)strokeColor;
-- (long long)type;
 - (id)initWithFrame:(id)arg0;
 - (id)boundingRectForCharacterRange:(id)arg0;
 - (void)drawTextInRect:(id)arg0;
-- (void)setType:(long long)arg0;
 @end
 
 @interface XIGDanmakuPlayerView : UIView
@@ -328,18 +317,6 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @property(nonatomic, strong) UIFont *danmakuFont;
 @property(nonatomic, strong) UIColor *danmakuTextColor;
 - (id)colorFromHexStringForTextInfo:(id)arg0;
-- (void)setDanmakuFont:(id)arg0;
-- (id)danmakuFont;
-- (id)danmakuText;
-- (void)setDanmakuText:(id)arg0;
-- (id)danmakuTextFrame;
-- (void)setDanmakuTextFrame:(id)arg0;
-- (id)danmakuTextColor;
-- (void)setDanmakuTextColor:(id)arg0;
-- (double)strokeWidth;
-- (void)setStrokeWidth:(double)arg0;
-- (void)setStrokeColor:(id)arg0;
-- (id)strokeColor;
 @end
 
 @interface AWELandscapeFeedEntryView : UIView
@@ -1362,9 +1339,6 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @end
 
 @interface AWELeftSideBarWeatherLabel : UILabel
-@property(nonatomic, assign) BOOL userInteractionEnabled;
-@property(nonatomic, strong) UIColor *textColor;
-- (void)addGestureRecognizer:(UIGestureRecognizer *)gestureRecognizer;
 @end
 @interface AWELeftSideBarWeatherView : UIView
 @property(nonatomic, readonly) NSArray<UIView *> *subviews;
