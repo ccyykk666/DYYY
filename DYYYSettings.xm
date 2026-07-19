@@ -839,7 +839,7 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
           @{
               @"identifier" : @"DYYYUseSystemTabBar",
               @"title" : @"使用系统底栏",
-              @"subTitle" : @"使用系统原生样式，保留抖音原有点击行为",
+              @"subTitle" : @"使用系统原生外观与交互，结构不兼容时自动回退",
               @"detail" : @"",
               @"cellType" : @37,
               @"imageName" : @"ic_ipadiphone_outlined"

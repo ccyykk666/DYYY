@@ -262,17 +262,6 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @property(nonatomic, strong) UIView *badgeContainerView;
 @end
 
-@interface AWENormalModeTabBarButtonParams : NSObject
-@property(nonatomic) NSInteger tabBarItemType;
-@property(nonatomic, strong) UIImage *normalImage;
-@property(nonatomic, strong) UIImage *selectedImage;
-@property(nonatomic, copy) NSString *text;
-@end
-
-@interface AWENormalModeTabBarViewsFactory : NSObject
-- (AWENormalModeTabBarButton *)tabBarButtonWithParams:(AWENormalModeTabBarButtonParams *)params;
-@end
-
 @interface AWEHPTopTabItemBadgeContentView : UIView
 @end
 
