@@ -12398,7 +12398,9 @@ static Class TagViewClass = nil;
         if (shouldShiftUp) {
             ty -= targetHeight;
         }
-        targetTransform = CGAffineTransformMakeTranslation(0, -20);
+        // 仅在首页全屏开启时按底栏高度上移；普通推荐页保持系统原始位置。
+        // 不再使用固定 -20pt，否则直播标签、昵称和文案会被无条件抬高。
+        targetTransform = CGAffineTransformMake(1.0, 0, 0, currentScale, tx, ty);
 
         if (!CGAffineTransformEqualToTransform(self.transform, targetTransform)) {
             self.transform = targetTransform;
