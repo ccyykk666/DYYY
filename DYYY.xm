@@ -10611,6 +10611,8 @@ static char kDYYYNativeTabControllerSignatureKey;
 static char kDYYYNativeTabOriginalStandardAppearanceKey;
 static char kDYYYNativeTabOriginalScrollEdgeAppearanceKey;
 static char kDYYYNativeTabActiveKey;
+static char kDYYYNativeTabRetryScheduledKey;
+static char kDYYYNativeTabLastFailureKey;
 
 static BOOL DYYYUseSystemTabBarEnabled(void) {
     return DYYYGetBool(@"DYYYUseSystemTabBar") && UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPhone;
@@ -10788,6 +10790,32 @@ static BOOL DYYYNativeSystemTabBarActive(AWENormalModeTabBar *tabBar) {
     return [objc_getAssociatedObject(tabBar, &kDYYYNativeTabActiveKey) boolValue];
 }
 
+static UITabBarController *DYYYNativeTabBarController(AWENormalModeTabBar *tabBar) {
+    UITabBarController *controller = tabBar.yy_viewController;
+    if ([controller isKindOfClass:UITabBarController.class] && controller.tabBar == tabBar) {
+        return controller;
+    }
+
+    UIResponder *responder = tabBar;
+    while ((responder = responder.nextResponder)) {
+        if ([responder isKindOfClass:UITabBarController.class]) {
+            UITabBarController *candidate = (UITabBarController *)responder;
+            if (candidate.tabBar == tabBar) {
+                return candidate;
+            }
+        }
+    }
+    return nil;
+}
+
+static void DYYYNativeTabLogFailure(AWENormalModeTabBar *tabBar, NSString *reason) {
+    NSString *lastReason = objc_getAssociatedObject(tabBar, &kDYYYNativeTabLastFailureKey);
+    if (![lastReason isEqualToString:reason]) {
+        NSLog(@"[DYYY][SystemTabBar] %@", reason);
+        objc_setAssociatedObject(tabBar, &kDYYYNativeTabLastFailureKey, reason, OBJC_ASSOCIATION_COPY_NONATOMIC);
+    }
+}
+
 static void DYYYSetNativeTabOriginalButtonCovered(AWENormalModeTabBarButton *button, BOOL covered) {
     if (!button) {
         return;
@@ -10827,7 +10855,7 @@ static void DYYYRestoreNativeSystemTabBar(AWENormalModeTabBar *tabBar) {
     }
 
     objc_setAssociatedObject(tabBar, &kDYYYNativeTabActiveKey, nil, OBJC_ASSOCIATION_ASSIGN);
-    UITabBarController *controller = tabBar.yy_viewController;
+    UITabBarController *controller = DYYYNativeTabBarController(tabBar);
     for (UIViewController *viewController in controller.viewControllers) {
         UITabBarItem *originalItem = objc_getAssociatedObject(viewController, &kDYYYNativeTabOriginalControllerItemKey);
         if (originalItem) {
@@ -10893,6 +10921,10 @@ static void DYYYUpdateNativeSystemTabBar(AWENormalModeTabBar *tabBar) {
     for (AWENormalModeTabBarButton *button in allButtons) {
         if (!button.hidden) {
             if (DYYYNativeTabIsActionButton(button)) {
+                if (DYYYGetBool(@"DYYYHidePlusButton")) {
+                    continue;
+                }
+                DYYYNativeTabLogFailure(tabBar, @"已回退：存在可见的拍摄/发布操作按钮");
                 DYYYRestoreNativeSystemTabBar(tabBar);
                 return;
             }
@@ -10900,9 +10932,15 @@ static void DYYYUpdateNativeSystemTabBar(AWENormalModeTabBar *tabBar) {
         }
     }
 
-    UITabBarController *controller = tabBar.yy_viewController;
+    UITabBarController *controller = DYYYNativeTabBarController(tabBar);
     NSArray<UIViewController *> *viewControllers = controller.viewControllers;
-    if (![controller isKindOfClass:UITabBarController.class] || controller.tabBar != tabBar || visibleButtons.count < 2 || visibleButtons.count > 5 || viewControllers.count != visibleButtons.count) {
+    if (!controller) {
+        DYYYNativeTabLogFailure(tabBar, @"已回退：未找到管理当前底栏的 UITabBarController");
+        DYYYRestoreNativeSystemTabBar(tabBar);
+        return;
+    }
+    if (visibleButtons.count < 2 || visibleButtons.count > 5 || viewControllers.count != visibleButtons.count) {
+        DYYYNativeTabLogFailure(tabBar, [NSString stringWithFormat:@"已回退：按钮数 %lu，页面控制器数 %lu", (unsigned long)visibleButtons.count, (unsigned long)viewControllers.count]);
         DYYYRestoreNativeSystemTabBar(tabBar);
         return;
     }
@@ -10912,18 +10950,37 @@ static void DYYYUpdateNativeSystemTabBar(AWENormalModeTabBar *tabBar) {
     BOOL sameConfiguration = DYYYNativeSystemTabBarActive(tabBar) && [buttonSignature isEqualToArray:objc_getAssociatedObject(tabBar, &kDYYYNativeTabButtonSignatureKey)] &&
                              [controllerSignature isEqualToArray:objc_getAssociatedObject(tabBar, &kDYYYNativeTabControllerSignatureKey)];
     if (sameConfiguration) {
+        objc_setAssociatedObject(tabBar, &kDYYYNativeTabLastFailureKey, nil, OBJC_ASSOCIATION_ASSIGN);
         DYYYApplyNativeSystemTabBarChrome(tabBar, visibleButtons);
         return;
     }
 
     if (controller.transitionCoordinator) {
+        DYYYNativeTabLogFailure(tabBar, @"等待当前页面转场结束后启用");
+        if (![objc_getAssociatedObject(tabBar, &kDYYYNativeTabRetryScheduledKey) boolValue]) {
+            objc_setAssociatedObject(tabBar, &kDYYYNativeTabRetryScheduledKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+            __weak AWENormalModeTabBar *weakTabBar = tabBar;
+            [controller.transitionCoordinator animateAlongsideTransition:nil
+                                                              completion:^(__unused id<UIViewControllerTransitionCoordinatorContext> context) {
+                                                                dispatch_async(dispatch_get_main_queue(), ^{
+                                                                  AWENormalModeTabBar *strongTabBar = weakTabBar;
+                                                                  if (!strongTabBar) {
+                                                                      return;
+                                                                  }
+                                                                  objc_setAssociatedObject(strongTabBar, &kDYYYNativeTabRetryScheduledKey, nil, OBJC_ASSOCIATION_ASSIGN);
+                                                                  DYYYUpdateNativeSystemTabBar(strongTabBar);
+                                                                });
+                                                              }];
+        }
         return;
     }
+    objc_setAssociatedObject(tabBar, &kDYYYNativeTabRetryScheduledKey, nil, OBJC_ASSOCIATION_ASSIGN);
 
     NSMutableArray<UITabBarItem *> *items = [NSMutableArray arrayWithCapacity:visibleButtons.count];
     for (AWENormalModeTabBarButton *button in visibleButtons) {
         UITabBarItem *item = DYYYNativeTabItemForButton(button);
         if (!item) {
+            DYYYNativeTabLogFailure(tabBar, @"已回退：底栏按钮缺少可用文字标题");
             DYYYRestoreNativeSystemTabBar(tabBar);
             return;
         }
@@ -10955,6 +11012,8 @@ static void DYYYUpdateNativeSystemTabBar(AWENormalModeTabBar *tabBar) {
     }];
 
     DYYYApplyNativeSystemTabBarChrome(tabBar, visibleButtons);
+    objc_setAssociatedObject(tabBar, &kDYYYNativeTabLastFailureKey, nil, OBJC_ASSOCIATION_ASSIGN);
+    NSLog(@"[DYYY][SystemTabBar] 已启用：%lu 个系统文字标签", (unsigned long)items.count);
     [tabBar setNeedsLayout];
 }
 
