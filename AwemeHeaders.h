@@ -256,6 +256,8 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @interface AWENormalModeTabBarButton : UIButton
 @property(nonatomic) NSInteger type;
 @property(nonatomic) NSInteger status;
+@property(nonatomic, strong) UIGestureRecognizer *singleTapGes;
+- (void)onTouchUpInside:(id)sender;
 @end
 
 @interface AWENormalModeTabBarGeneralButton : AWENormalModeTabBarButton
@@ -1353,6 +1355,7 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @interface AWENormalModeTabBarController : AWEBaseTabBarController
 @property(nonatomic, strong) AWENormalModeTabBar *awe_tabBar;
 - (void)handleApplicationWillEnterForeground:(NSNotification *)notification;
+- (void)markTabBarReady;
 @end
 
 @interface AWELeftSideBarWeatherLabel : UILabel

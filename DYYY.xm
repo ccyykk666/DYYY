@@ -20,6 +20,7 @@
 #import "CityManager.h"
 #import "DYYYBottomAlertView.h"
 #import "DYYYManager.h"
+#import "DYYYNativeTabBarDelegateProxy.h"
 
 #import "AWMSafeDispatchTimer.h"
 #import "DYYYConstants.h"
@@ -10611,9 +10612,12 @@ static char kDYYYNativeTabButtonSignatureKey;
 static char kDYYYNativeTabControllerSignatureKey;
 static char kDYYYNativeTabOriginalStandardAppearanceKey;
 static char kDYYYNativeTabOriginalScrollEdgeAppearanceKey;
+static char kDYYYNativeTabOriginalTintColorKey;
+static char kDYYYNativeTabOriginalUnselectedTintColorKey;
 static char kDYYYNativeTabActiveKey;
 static char kDYYYNativeTabModeKey;
 static char kDYYYNativeTabMutationKey;
+static char kDYYYNativeTabDelegateProxyKey;
 static char kDYYYNativeTabRetryScheduledKey;
 static char kDYYYNativeTabLastFailureKey;
 static NSString *const kDYYYNativeTabRuntimeStatusKey = @"DYYYSystemTabBarRuntimeStatus";
@@ -10795,6 +10799,15 @@ static NSArray<NSValue *> *DYYYNativeTabIdentitySignature(NSArray *objects) {
     return signature;
 }
 
+static AWENormalModeTabBarButton *DYYYNativeTabButtonForItem(AWENormalModeTabBar *tabBar, UITabBarItem *item) {
+    for (AWENormalModeTabBarButton *button in DYYYNativeTabButtons(tabBar)) {
+        if (objc_getAssociatedObject(button, &kDYYYNativeTabItemKey) == item) {
+            return button;
+        }
+    }
+    return nil;
+}
+
 static BOOL DYYYNativeSystemTabBarActive(AWENormalModeTabBar *tabBar) {
     return [objc_getAssociatedObject(tabBar, &kDYYYNativeTabActiveKey) boolValue];
 }
@@ -10843,6 +10856,33 @@ static void DYYYNativeTabLogFailure(AWENormalModeTabBar *tabBar, NSString *reaso
     }
 }
 
+static void DYYYInstallNativeTabFallbackDelegate(AWENormalModeTabBar *tabBar) {
+    DYYYNativeTabBarDelegateProxy *proxy = objc_getAssociatedObject(tabBar, &kDYYYNativeTabDelegateProxyKey);
+    if (!proxy) {
+        proxy = [[DYYYNativeTabBarDelegateProxy alloc] init];
+        proxy.forwardingDelegate = tabBar.delegate;
+        proxy.selectionHandler = ^(UITabBar *selectedTabBar, UITabBarItem *item) {
+          AWENormalModeTabBarButton *button = DYYYNativeTabButtonForItem((AWENormalModeTabBar *)selectedTabBar, item);
+          [button onTouchUpInside:button.singleTapGes];
+        };
+        objc_setAssociatedObject(tabBar, &kDYYYNativeTabDelegateProxyKey, proxy, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    if (tabBar.delegate != proxy) {
+        tabBar.delegate = proxy;
+    }
+}
+
+static void DYYYRestoreNativeTabFallbackDelegate(AWENormalModeTabBar *tabBar) {
+    DYYYNativeTabBarDelegateProxy *proxy = objc_getAssociatedObject(tabBar, &kDYYYNativeTabDelegateProxyKey);
+    if (!proxy) {
+        return;
+    }
+    if (tabBar.delegate == proxy) {
+        tabBar.delegate = proxy.forwardingDelegate;
+    }
+    objc_setAssociatedObject(tabBar, &kDYYYNativeTabDelegateProxyKey, nil, OBJC_ASSOCIATION_ASSIGN);
+}
+
 static void DYYYSetNativeTabOriginalButtonCovered(AWENormalModeTabBarButton *button, BOOL covered) {
     if (!button) {
         return;
@@ -10886,6 +10926,7 @@ static void DYYYRestoreNativeSystemTabBar(AWENormalModeTabBar *tabBar) {
     UITabBarController *controller = DYYYNativeTabBarController(tabBar);
     DYYYNativeTabMode mode = (DYYYNativeTabMode)[objc_getAssociatedObject(tabBar, &kDYYYNativeTabModeKey) unsignedIntegerValue];
     if (mode == DYYYNativeTabModeVisualFallback) {
+        DYYYRestoreNativeTabFallbackDelegate(tabBar);
         id originalItems = objc_getAssociatedObject(tabBar, &kDYYYNativeTabOriginalItemsKey);
         if (originalItems) {
             [tabBar setItems:originalItems == NSNull.null ? nil : originalItems animated:NO];
@@ -10910,9 +10951,19 @@ static void DYYYRestoreNativeSystemTabBar(AWENormalModeTabBar *tabBar) {
             tabBar.scrollEdgeAppearance = originalScrollEdgeAppearance == NSNull.null ? nil : originalScrollEdgeAppearance;
         }
     }
+    id originalTintColor = objc_getAssociatedObject(tabBar, &kDYYYNativeTabOriginalTintColorKey);
+    if (originalTintColor) {
+        tabBar.tintColor = originalTintColor == NSNull.null ? nil : originalTintColor;
+    }
+    id originalUnselectedTintColor = objc_getAssociatedObject(tabBar, &kDYYYNativeTabOriginalUnselectedTintColorKey);
+    if (originalUnselectedTintColor) {
+        tabBar.unselectedItemTintColor = originalUnselectedTintColor == NSNull.null ? nil : originalUnselectedTintColor;
+    }
 
     objc_setAssociatedObject(tabBar, &kDYYYNativeTabOriginalStandardAppearanceKey, nil, OBJC_ASSOCIATION_ASSIGN);
     objc_setAssociatedObject(tabBar, &kDYYYNativeTabOriginalScrollEdgeAppearanceKey, nil, OBJC_ASSOCIATION_ASSIGN);
+    objc_setAssociatedObject(tabBar, &kDYYYNativeTabOriginalTintColorKey, nil, OBJC_ASSOCIATION_ASSIGN);
+    objc_setAssociatedObject(tabBar, &kDYYYNativeTabOriginalUnselectedTintColorKey, nil, OBJC_ASSOCIATION_ASSIGN);
     objc_setAssociatedObject(tabBar, &kDYYYNativeTabOriginalItemsKey, nil, OBJC_ASSOCIATION_ASSIGN);
     objc_setAssociatedObject(tabBar, &kDYYYNativeTabButtonSignatureKey, nil, OBJC_ASSOCIATION_ASSIGN);
     objc_setAssociatedObject(tabBar, &kDYYYNativeTabControllerSignatureKey, nil, OBJC_ASSOCIATION_ASSIGN);
@@ -10947,6 +10998,18 @@ static void DYYYApplyNativeSystemTabBarChrome(AWENormalModeTabBar *tabBar, NSArr
             subview.userInteractionEnabled = YES;
         }
     }
+}
+
+static void DYYYSetNativeTabTitleFont(UITabBarItemStateAppearance *stateAppearance, UIFont *font) {
+    NSMutableDictionary<NSAttributedStringKey, id> *attributes = [stateAppearance.titleTextAttributes mutableCopy] ?: [NSMutableDictionary dictionary];
+    attributes[NSFontAttributeName] = font;
+    stateAppearance.titleTextAttributes = attributes;
+}
+
+static void DYYYConfigureNativeTabItemAppearance(UITabBarItemAppearance *itemAppearance) {
+    UIFont *font = [UIFont systemFontOfSize:14.0 weight:UIFontWeightMedium];
+    DYYYSetNativeTabTitleFont(itemAppearance.normal, font);
+    DYYYSetNativeTabTitleFont(itemAppearance.selected, font);
 }
 
 static void DYYYUpdateNativeSystemTabBar(AWENormalModeTabBar *tabBar) {
@@ -11002,19 +11065,24 @@ static void DYYYUpdateNativeSystemTabBar(AWENormalModeTabBar *tabBar) {
         if (![objc_getAssociatedObject(tabBar, &kDYYYNativeTabRetryScheduledKey) boolValue]) {
             objc_setAssociatedObject(tabBar, &kDYYYNativeTabRetryScheduledKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
             __weak AWENormalModeTabBar *weakTabBar = tabBar;
-            [controller.transitionCoordinator animateAlongsideTransition:nil
-                                                              completion:^(__unused id<UIViewControllerTransitionCoordinatorContext> context) {
-                                                                dispatch_async(dispatch_get_main_queue(), ^{
-                                                                  AWENormalModeTabBar *strongTabBar = weakTabBar;
-                                                                  if (!strongTabBar) {
-                                                                      return;
-                                                                  }
-                                                                  objc_setAssociatedObject(strongTabBar, &kDYYYNativeTabRetryScheduledKey, nil, OBJC_ASSOCIATION_ASSIGN);
-                                                                  DYYYUpdateNativeSystemTabBar(strongTabBar);
-                                                                });
-                                                              }];
+            BOOL scheduled = [controller.transitionCoordinator animateAlongsideTransition:nil
+                                                                                completion:^(__unused id<UIViewControllerTransitionCoordinatorContext> context) {
+                                                                                  dispatch_async(dispatch_get_main_queue(), ^{
+                                                                                    AWENormalModeTabBar *strongTabBar = weakTabBar;
+                                                                                    if (!strongTabBar) {
+                                                                                        return;
+                                                                                    }
+                                                                                    objc_setAssociatedObject(strongTabBar, &kDYYYNativeTabRetryScheduledKey, nil, OBJC_ASSOCIATION_ASSIGN);
+                                                                                    DYYYUpdateNativeSystemTabBar(strongTabBar);
+                                                                                  });
+                                                                                }];
+            if (scheduled) {
+                return;
+            }
+            objc_setAssociatedObject(tabBar, &kDYYYNativeTabRetryScheduledKey, nil, OBJC_ASSOCIATION_ASSIGN);
+        } else {
+            return;
         }
-        return;
     }
     objc_setAssociatedObject(tabBar, &kDYYYNativeTabRetryScheduledKey, nil, OBJC_ASSOCIATION_ASSIGN);
 
@@ -11025,6 +11093,9 @@ static void DYYYUpdateNativeSystemTabBar(AWENormalModeTabBar *tabBar) {
             if (tabBar.selectedItem != selectedItem) {
                 tabBar.selectedItem = selectedItem;
             }
+        }
+        if (mode == DYYYNativeTabModeVisualFallback) {
+            DYYYInstallNativeTabFallbackDelegate(tabBar);
         }
         DYYYApplyNativeSystemTabBarChrome(tabBar, visibleButtons);
         return;
@@ -11046,13 +11117,20 @@ static void DYYYUpdateNativeSystemTabBar(AWENormalModeTabBar *tabBar) {
     if (@available(iOS 15.0, *)) {
         objc_setAssociatedObject(tabBar, &kDYYYNativeTabOriginalScrollEdgeAppearanceKey, tabBar.scrollEdgeAppearance ?: NSNull.null, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
+    objc_setAssociatedObject(tabBar, &kDYYYNativeTabOriginalTintColorKey, tabBar.tintColor ?: NSNull.null, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(tabBar, &kDYYYNativeTabOriginalUnselectedTintColorKey, tabBar.unselectedItemTintColor ?: NSNull.null, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
 
     UITabBarAppearance *appearance = [[UITabBarAppearance alloc] init];
     [appearance configureWithDefaultBackground];
+    DYYYConfigureNativeTabItemAppearance(appearance.stackedLayoutAppearance);
+    DYYYConfigureNativeTabItemAppearance(appearance.inlineLayoutAppearance);
+    DYYYConfigureNativeTabItemAppearance(appearance.compactInlineLayoutAppearance);
     tabBar.standardAppearance = appearance;
     if (@available(iOS 15.0, *)) {
         tabBar.scrollEdgeAppearance = appearance;
     }
+    tabBar.tintColor = UIColor.labelColor;
+    tabBar.unselectedItemTintColor = UIColor.secondaryLabelColor;
 
     objc_setAssociatedObject(tabBar, &kDYYYNativeTabMutationKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     objc_setAssociatedObject(tabBar, &kDYYYNativeTabActiveKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -11073,6 +11151,7 @@ static void DYYYUpdateNativeSystemTabBar(AWENormalModeTabBar *tabBar) {
         if (controller.selectedIndex < items.count) {
             tabBar.selectedItem = items[controller.selectedIndex];
         }
+        DYYYInstallNativeTabFallbackDelegate(tabBar);
     }
     objc_setAssociatedObject(tabBar, &kDYYYNativeTabMutationKey, nil, OBJC_ASSOCIATION_ASSIGN);
 
@@ -11402,6 +11481,11 @@ static Class tabBarButtonClass = nil;
 %hook AWENormalModeTabBarController
 
 - (void)viewDidLayoutSubviews {
+    %orig;
+    DYYYUpdateNativeSystemTabBar(self.awe_tabBar);
+}
+
+- (void)markTabBarReady {
     %orig;
     DYYYUpdateNativeSystemTabBar(self.awe_tabBar);
 }
