@@ -1356,6 +1356,8 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @property(nonatomic, strong) AWENormalModeTabBar *awe_tabBar;
 - (void)handleApplicationWillEnterForeground:(NSNotification *)notification;
 - (void)markTabBarReady;
+- (void)recoverColdLaunchButtons;
+- (void)updateUIByCurrentSelected;
 - (void)didThemeChanged:(BOOL)changed;
 @end
 

@@ -1,38 +1,69 @@
 #import "DYYYInstagramTabBarView.h"
 
+#import <math.h>
 #import <objc/message.h>
 
 static const CGFloat kDYYYInstagramBarHorizontalInset = 22.0;
 static const CGFloat kDYYYInstagramBarHeight = 60.0;
 static const CGFloat kDYYYInstagramButtonHorizontalInset = 10.0;
 static const CGFloat kDYYYInstagramIndicatorInset = 5.0;
+static const CGFloat kDYYYInstagramRubberBandLimit = 20.0;
+static const CGFloat kDYYYInstagramRubberBandCoefficient = 0.55;
+static const NSTimeInterval kDYYYInstagramIndicatorAnimationDuration = 0.35;
+static const CGFloat kDYYYInstagramIndicatorSpringDamping = 0.78;
 
-static UIVisualEffect *DYYYInstagramGlassEffect(void) {
+static UIColor *DYYYInstagramGlassTintColor(void) {
+    return [UIColor colorWithDynamicProvider:^UIColor *(UITraitCollection *traitCollection) {
+      if (traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark) {
+          return [UIColor.blackColor colorWithAlphaComponent:0.65];
+      }
+      return [UIColor.whiteColor colorWithAlphaComponent:0.80];
+    }];
+}
+
+static UIVisualEffect *DYYYInstagramGlassEffect(UIColor *tintColor) {
     Class glassEffectClass = NSClassFromString(@"UIGlassEffect");
     SEL effectSelector = NSSelectorFromString(@"effectWithStyle:");
     if (glassEffectClass && [glassEffectClass respondsToSelector:effectSelector]) {
-        // Instagram 435.1.0 uses UIGlassEffectStyleRegular (raw value 1),
-        // enables interaction, then applies its IGDS tab-bar tint.
+        // Instagram 435.1.0: UIGlassEffectStyleRegular (1), interactive=YES,
+        // followed by its dynamic IGDS Liquid Glass tab-bar tint.
         id effect = ((id (*)(id, SEL, NSInteger))objc_msgSend)(glassEffectClass, effectSelector, 1);
         SEL interactiveSelector = NSSelectorFromString(@"setInteractive:");
         if ([effect respondsToSelector:interactiveSelector]) {
             ((void (*)(id, SEL, BOOL))objc_msgSend)(effect, interactiveSelector, YES);
         }
+        SEL tintSelector = NSSelectorFromString(@"setTintColor:");
+        if ([effect respondsToSelector:tintSelector]) {
+            ((void (*)(id, SEL, id))objc_msgSend)(effect, tintSelector, tintColor);
+        }
         return effect;
     }
+
+    // Instagram uses UIBlurEffectStyleSystemMaterial before the Liquid Glass
+    // path is available.
     return [UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemMaterial];
 }
 
-@interface DYYYInstagramTabBarView () <UIGestureRecognizerDelegate>
+static CGFloat DYYYInstagramRubberBandedOffset(CGFloat offset) {
+    if (offset == 0.0) {
+        return 0.0;
+    }
+    CGFloat normalized = fabs(offset) * kDYYYInstagramRubberBandCoefficient / kDYYYInstagramRubberBandLimit;
+    CGFloat magnitude = kDYYYInstagramRubberBandLimit * (1.0 - 1.0 / (normalized + 1.0));
+    return copysign(magnitude, offset);
+}
+
+@interface DYYYInstagramTabBarView ()
 
 @property(nonatomic, strong) UIView *shadowView;
 @property(nonatomic, strong) UIVisualEffectView *glassView;
 @property(nonatomic, strong) UIVisualEffectView *indicatorView;
+@property(nonatomic, strong) UIVisualEffect *cachedGlassEffect;
 @property(nonatomic, strong) NSMutableArray<UIButton *> *buttons;
 @property(nonatomic, strong) UIPanGestureRecognizer *panGestureRecognizer;
 @property(nonatomic, strong) UISelectionFeedbackGenerator *feedbackGenerator;
 @property(nonatomic, assign, readwrite) NSUInteger selectedIndex;
-@property(nonatomic, assign) CGPoint dragStartIndicatorCenter;
+@property(nonatomic, assign) CGFloat lastPanVelocityX;
 
 @end
 
@@ -56,7 +87,7 @@ static UIVisualEffect *DYYYInstagramGlassEffect(void) {
     _shadowView.layer.shadowRadius = 24.0;
     [self addSubview:_shadowView];
 
-    _glassView = [[UIVisualEffectView alloc] initWithEffect:nil];
+    _glassView = [[UIVisualEffectView alloc] initWithEffect:[UIBlurEffect effectWithStyle:UIBlurEffectStyleSystemMaterial]];
     _glassView.clipsToBounds = YES;
     _glassView.layer.cornerCurve = kCACornerCurveContinuous;
     _glassView.isAccessibilityElement = NO;
@@ -72,8 +103,8 @@ static UIVisualEffect *DYYYInstagramGlassEffect(void) {
     _selectedIndex = NSNotFound;
 
     _panGestureRecognizer = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handlePanGesture:)];
-    _panGestureRecognizer.delegate = self;
     _panGestureRecognizer.maximumNumberOfTouches = 1;
+    _panGestureRecognizer.cancelsTouchesInView = YES;
     [_glassView.contentView addGestureRecognizer:_panGestureRecognizer];
 
     [self refreshAppearance];
@@ -81,7 +112,16 @@ static UIVisualEffect *DYYYInstagramGlassEffect(void) {
 }
 
 - (void)refreshAppearance {
-    self.glassView.effect = DYYYInstagramGlassEffect();
+    UIColor *glassTintColor = DYYYInstagramGlassTintColor();
+    if (!self.cachedGlassEffect || ![self.cachedGlassEffect respondsToSelector:NSSelectorFromString(@"setInteractive:")]) {
+        self.cachedGlassEffect = DYYYInstagramGlassEffect(glassTintColor);
+    } else {
+        SEL tintSelector = NSSelectorFromString(@"setTintColor:");
+        if ([self.cachedGlassEffect respondsToSelector:tintSelector]) {
+            ((void (*)(id, SEL, id))objc_msgSend)(self.cachedGlassEffect, tintSelector, glassTintColor);
+        }
+    }
+    self.glassView.effect = self.cachedGlassEffect;
 
     BOOL dark = self.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark;
     UIBlurEffectStyle indicatorStyle = dark ? UIBlurEffectStyleSystemUltraThinMaterialLight : UIBlurEffectStyleSystemUltraThinMaterialDark;
@@ -96,7 +136,7 @@ static UIVisualEffect *DYYYInstagramGlassEffect(void) {
 
 - (void)traitCollectionDidChange:(UITraitCollection *)previousTraitCollection {
     [super traitCollectionDidChange:previousTraitCollection];
-    if (previousTraitCollection.userInterfaceStyle != self.traitCollection.userInterfaceStyle) {
+    if (!previousTraitCollection || [self.traitCollection hasDifferentColorAppearanceComparedToTraitCollection:previousTraitCollection]) {
         [self refreshAppearance];
     }
 }
@@ -105,7 +145,7 @@ static UIVisualEffect *DYYYInstagramGlassEffect(void) {
                    selectedImages:(NSArray<UIImage *> *)selectedImages
               accessibilityLabels:(NSArray<NSString *> *)accessibilityLabels
                     selectedIndex:(NSUInteger)selectedIndex {
-    if (normalImages.count != selectedImages.count || normalImages.count != accessibilityLabels.count) {
+    if (normalImages.count == 0 || normalImages.count != selectedImages.count || normalImages.count != accessibilityLabels.count) {
         return;
     }
 
@@ -129,10 +169,10 @@ static UIVisualEffect *DYYYInstagramGlassEffect(void) {
       [button setImage:selectedImages[index] forState:UIControlStateSelected];
       button.accessibilityLabel = accessibilityLabels[index];
       button.accessibilityTraits = UIAccessibilityTraitButton;
-      button.tag = index;
+      button.tag = (NSInteger)index;
     }];
 
-    self.selectedIndex = selectedIndex < self.buttons.count ? selectedIndex : 0;
+    _selectedIndex = selectedIndex < self.buttons.count ? selectedIndex : 0;
     [self updateButtonSelection];
     [self setNeedsLayout];
 }
@@ -141,8 +181,9 @@ static UIVisualEffect *DYYYInstagramGlassEffect(void) {
     [super layoutSubviews];
 
     CGFloat availableWidth = MAX(0.0, CGRectGetWidth(self.bounds) - 2.0 * kDYYYInstagramBarHorizontalInset);
+    CGFloat barHeight = MIN(kDYYYInstagramBarHeight, CGRectGetHeight(self.bounds));
     CGFloat y = CGRectGetHeight(self.bounds) >= kDYYYInstagramBarHeight ? 1.0 : 0.0;
-    CGRect glassFrame = CGRectMake(kDYYYInstagramBarHorizontalInset, y, availableWidth, MIN(kDYYYInstagramBarHeight, CGRectGetHeight(self.bounds)));
+    CGRect glassFrame = CGRectMake(kDYYYInstagramBarHorizontalInset, y, availableWidth, barHeight);
     self.shadowView.frame = glassFrame;
     self.glassView.frame = glassFrame;
 
@@ -164,12 +205,15 @@ static UIVisualEffect *DYYYInstagramGlassEffect(void) {
       button.frame = CGRectMake(kDYYYInstagramButtonHorizontalInset + buttonWidth * index, 0.0, buttonWidth, buttonHeight);
     }];
 
-    CGFloat indicatorWidth = buttonWidth + 20.0;
-    self.indicatorView.bounds = CGRectMake(0.0, 0.0, indicatorWidth - 2.0 * kDYYYInstagramIndicatorInset, buttonHeight - 2.0 * kDYYYInstagramIndicatorInset);
-    self.indicatorView.layer.cornerRadius = CGRectGetHeight(self.indicatorView.bounds) * 0.5;
-    if (self.panGestureRecognizer.state == UIGestureRecognizerStatePossible) {
+    CGSize normalIndicatorSize = CGSizeMake(buttonWidth + 2.0 * kDYYYInstagramIndicatorInset, buttonHeight - 2.0 * kDYYYInstagramIndicatorInset);
+    self.indicatorView.bounds = (CGRect){CGPointZero, normalIndicatorSize};
+    self.indicatorView.layer.cornerRadius = normalIndicatorSize.height * 0.5;
+
+    UIGestureRecognizerState panState = self.panGestureRecognizer.state;
+    if (panState != UIGestureRecognizerStateBegan && panState != UIGestureRecognizerStateChanged) {
         self.indicatorView.center = [self centerForButtonAtIndex:self.selectedIndex];
     }
+
     [self.glassView.contentView bringSubviewToFront:self.indicatorView];
     for (UIButton *button in self.buttons) {
         [self.glassView.contentView bringSubviewToFront:button];
@@ -198,17 +242,27 @@ static UIVisualEffect *DYYYInstagramGlassEffect(void) {
 
     _selectedIndex = selectedIndex;
     [self updateButtonSelection];
+
     UIGestureRecognizerState panState = self.panGestureRecognizer.state;
     if (panState == UIGestureRecognizerStateBegan || panState == UIGestureRecognizerStateChanged) {
         return;
     }
+
     CGPoint targetCenter = [self centerForButtonAtIndex:selectedIndex];
+    CGFloat distance = targetCenter.x - self.indicatorView.center.x;
+    CGFloat initialVelocity = fabs(distance) > 0.5 ? self.lastPanVelocityX / distance : 0.0;
     void (^animations)(void) = ^{
       self.indicatorView.center = targetCenter;
       [self applyIndicatorSqueeze:0.0];
     };
     if (animated && self.window) {
-        [UIView animateWithDuration:0.35 delay:0.0 usingSpringWithDamping:0.78 initialSpringVelocity:0.0 options:UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction animations:animations completion:nil];
+        [UIView animateWithDuration:kDYYYInstagramIndicatorAnimationDuration
+                              delay:0.0
+             usingSpringWithDamping:kDYYYInstagramIndicatorSpringDamping
+              initialSpringVelocity:initialVelocity
+                            options:UIViewAnimationOptionBeginFromCurrentState | UIViewAnimationOptionAllowUserInteraction
+                         animations:animations
+                         completion:nil];
     } else {
         animations();
     }
@@ -219,51 +273,49 @@ static UIVisualEffect *DYYYInstagramGlassEffect(void) {
     if (index >= self.buttons.count) {
         return;
     }
+    self.lastPanVelocityX = 0.0;
     [self setSelectedIndex:index animated:YES];
     if (self.selectionHandler) {
         self.selectionHandler(index);
     }
 }
 
-- (BOOL)gestureRecognizerShouldBegin:(UIPanGestureRecognizer *)gestureRecognizer {
-    if (gestureRecognizer != self.panGestureRecognizer || self.buttons.count < 2) {
-        return NO;
-    }
-    CGPoint velocity = [gestureRecognizer velocityInView:self.glassView.contentView];
-    return fabs(velocity.x) > fabs(velocity.y);
-}
-
 - (void)handlePanGesture:(UIPanGestureRecognizer *)gestureRecognizer {
-    if (self.buttons.count == 0) {
+    if (self.buttons.count < 2) {
         return;
     }
 
     switch (gestureRecognizer.state) {
-        case UIGestureRecognizerStateBegan: {
-            self.dragStartIndicatorCenter = [self centerForButtonAtIndex:self.selectedIndex];
+        case UIGestureRecognizerStateBegan:
+            [self.indicatorView.layer removeAllAnimations];
             self.feedbackGenerator = [[UISelectionFeedbackGenerator alloc] init];
             [self.feedbackGenerator prepare];
             break;
-        }
+
         case UIGestureRecognizerStateChanged: {
             CGPoint location = [gestureRecognizer locationInView:self.glassView.contentView];
+            CGPoint velocity = [gestureRecognizer velocityInView:self.glassView.contentView];
+            self.lastPanVelocityX = velocity.x;
+
             CGPoint firstCenter = [self centerForButtonAtIndex:0];
             CGPoint lastCenter = [self centerForButtonAtIndex:self.buttons.count - 1];
-            CGFloat x = location.x;
-            if (x < firstCenter.x) {
-                x = firstCenter.x + (x - firstCenter.x) * 0.20;
-            } else if (x > lastCenter.x) {
-                x = lastCenter.x + (x - lastCenter.x) * 0.20;
+            CGFloat displayedX = location.x;
+            if (location.x < firstCenter.x) {
+                displayedX = firstCenter.x + DYYYInstagramRubberBandedOffset(location.x - firstCenter.x);
+            } else if (location.x > lastCenter.x) {
+                displayedX = lastCenter.x + DYYYInstagramRubberBandedOffset(location.x - lastCenter.x);
             }
 
-            CGFloat buttonWidth = self.buttons.firstObject.bounds.size.width;
-            CGFloat squeeze = buttonWidth > 0.0 ? MIN(1.0, fabs(x - [self centerForButtonAtIndex:self.selectedIndex].x) / buttonWidth) : 0.0;
-            self.indicatorView.center = CGPointMake(x, self.dragStartIndicatorCenter.y);
+            CGFloat clampedX = MIN(MAX(location.x, firstCenter.x), lastCenter.x);
+            CGFloat buttonWidth = MAX(self.buttons.firstObject.bounds.size.width, 1.0);
+            NSUInteger nearestIndex = (NSUInteger)llround((clampedX - firstCenter.x) / buttonWidth);
+            nearestIndex = MIN(nearestIndex, self.buttons.count - 1);
+
+            CGPoint selectedCenter = [self centerForButtonAtIndex:nearestIndex];
+            CGFloat squeeze = MIN(1.0, fabs(displayedX - selectedCenter.x) / buttonWidth);
+            self.indicatorView.center = CGPointMake(displayedX, selectedCenter.y);
             [self applyIndicatorSqueeze:squeeze];
 
-            CGFloat clampedX = MIN(MAX(location.x, firstCenter.x), lastCenter.x);
-            NSUInteger nearestIndex = (NSUInteger)llround((clampedX - firstCenter.x) / MAX(buttonWidth, 1.0));
-            nearestIndex = MIN(nearestIndex, self.buttons.count - 1);
             if (nearestIndex != self.selectedIndex) {
                 _selectedIndex = nearestIndex;
                 [self updateButtonSelection];
@@ -275,12 +327,14 @@ static UIVisualEffect *DYYYInstagramGlassEffect(void) {
             }
             break;
         }
+
         case UIGestureRecognizerStateEnded:
         case UIGestureRecognizerStateCancelled:
         case UIGestureRecognizerStateFailed:
             self.feedbackGenerator = nil;
             [self setSelectedIndex:self.selectedIndex animated:YES];
             break;
+
         default:
             break;
     }
@@ -289,7 +343,7 @@ static UIVisualEffect *DYYYInstagramGlassEffect(void) {
 - (void)applyIndicatorSqueeze:(CGFloat)magnitude {
     CGFloat clampedMagnitude = MIN(MAX(magnitude, 0.0), 1.0);
     CGFloat buttonWidth = self.buttons.firstObject.bounds.size.width;
-    CGFloat normalWidth = buttonWidth + 10.0;
+    CGFloat normalWidth = buttonWidth + 2.0 * kDYYYInstagramIndicatorInset;
     CGFloat normalHeight = MAX(0.0, CGRectGetHeight(self.glassView.bounds) - 2.0 * kDYYYInstagramIndicatorInset);
     CGFloat width = normalWidth + 3.0 * clampedMagnitude;
     CGFloat height = normalHeight - 10.0 * clampedMagnitude;
