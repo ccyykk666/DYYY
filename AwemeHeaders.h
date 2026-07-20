@@ -1356,6 +1356,7 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @property(nonatomic, strong) AWENormalModeTabBar *awe_tabBar;
 - (void)handleApplicationWillEnterForeground:(NSNotification *)notification;
 - (void)markTabBarReady;
+- (void)didThemeChanged:(BOOL)changed;
 @end
 
 @interface AWELeftSideBarWeatherLabel : UILabel

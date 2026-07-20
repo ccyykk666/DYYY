@@ -840,7 +840,7 @@ void showDYYYSettingsVC(UIViewController *rootVC, BOOL hasAgreed) {
           @{
               @"identifier" : @"DYYYUseSystemTabBar",
               @"title" : @"使用系统底栏",
-              @"subTitle" : systemTabBarStatus.length > 0 ? systemTabBarStatus : @"使用系统原生外观与交互，结构不兼容时自动回退",
+              @"subTitle" : systemTabBarStatus.length > 0 ? systemTabBarStatus : @"使用 Instagram 同款 Liquid Glass 外观与拖动交互，不兼容时自动回退",
               @"detail" : @"",
               @"cellType" : @37,
               @"imageName" : @"ic_ipadiphone_outlined"

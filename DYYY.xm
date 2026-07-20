@@ -21,6 +21,8 @@
 #import "DYYYBottomAlertView.h"
 #import "DYYYManager.h"
 #import "DYYYNativeTabBarDelegateProxy.h"
+#import "DYYYNativeTabIcons.h"
+#import "DYYYInstagramTabBarView.h"
 
 #import "AWMSafeDispatchTimer.h"
 #import "DYYYConstants.h"
@@ -10614,18 +10616,23 @@ static char kDYYYNativeTabOriginalStandardAppearanceKey;
 static char kDYYYNativeTabOriginalScrollEdgeAppearanceKey;
 static char kDYYYNativeTabOriginalTintColorKey;
 static char kDYYYNativeTabOriginalUnselectedTintColorKey;
+static char kDYYYNativeTabOriginalOverrideStyleKey;
+static char kDYYYNativeTabOriginalTranslucentKey;
 static char kDYYYNativeTabActiveKey;
 static char kDYYYNativeTabModeKey;
 static char kDYYYNativeTabMutationKey;
 static char kDYYYNativeTabDelegateProxyKey;
 static char kDYYYNativeTabRetryScheduledKey;
 static char kDYYYNativeTabLastFailureKey;
+static char kDYYYInstagramTabBarViewKey;
 static NSString *const kDYYYNativeTabRuntimeStatusKey = @"DYYYSystemTabBarRuntimeStatus";
 
 typedef NS_ENUM(NSUInteger, DYYYNativeTabMode) {
     DYYYNativeTabModeControllerManaged = 1,
     DYYYNativeTabModeVisualFallback,
 };
+
+static UIUserInterfaceStyle DYYYNativeTabDesiredStyle(void);
 
 static BOOL DYYYUseSystemTabBarEnabled(void) {
     return DYYYGetBool(@"DYYYUseSystemTabBar") && UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPhone;
@@ -10693,6 +10700,22 @@ static NSString *DYYYNativeTabDisplayTitle(AWENormalModeTabBarButton *button, NS
     return sourceTitle;
 }
 
+static DYYYNativeTabIconKind DYYYNativeTabIconKindForTitle(NSString *title) {
+    if ([title containsString:@"首页"]) {
+        return DYYYNativeTabIconKindHome;
+    }
+    if ([title containsString:@"朋友"]) {
+        return DYYYNativeTabIconKindReels;
+    }
+    if ([title containsString:@"消息"]) {
+        return DYYYNativeTabIconKindDirect;
+    }
+    if ([title isEqualToString:@"我"] || [title containsString:@"我的"]) {
+        return DYYYNativeTabIconKindProfile;
+    }
+    return DYYYNativeTabIconKindUnknown;
+}
+
 static UITabBarItem *DYYYNativeTabItemForButton(AWENormalModeTabBarButton *button) {
     UITabBarItem *item = objc_getAssociatedObject(button, &kDYYYNativeTabItemKey);
     NSString *sourceTitle = objc_getAssociatedObject(button, &kDYYYNativeTabSourceTitleKey);
@@ -10704,7 +10727,14 @@ static UITabBarItem *DYYYNativeTabItemForButton(AWENormalModeTabBarButton *butto
     }
 
     if (!item && sourceTitle.length > 0 && !DYYYNativeTabIsActionButton(button)) {
-        item = [[UITabBarItem alloc] initWithTitle:DYYYNativeTabDisplayTitle(button, sourceTitle) image:nil selectedImage:nil];
+        DYYYNativeTabIconKind iconKind = DYYYNativeTabIconKindForTitle(sourceTitle);
+        UIImage *image = DYYYNativeTabIcon(iconKind, NO);
+        UIImage *selectedImage = DYYYNativeTabIcon(iconKind, YES);
+        if (!image || !selectedImage) {
+            return nil;
+        }
+        item = [[UITabBarItem alloc] initWithTitle:nil image:image selectedImage:selectedImage];
+        item.accessibilityLabel = DYYYNativeTabDisplayTitle(button, sourceTitle);
         item.tag = button.type;
         objc_setAssociatedObject(button, &kDYYYNativeTabItemKey, item, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }
@@ -10883,6 +10913,82 @@ static void DYYYRestoreNativeTabFallbackDelegate(AWENormalModeTabBar *tabBar) {
     objc_setAssociatedObject(tabBar, &kDYYYNativeTabDelegateProxyKey, nil, OBJC_ASSOCIATION_ASSIGN);
 }
 
+static NSUInteger DYYYNativeSelectedButtonIndex(NSArray<AWENormalModeTabBarButton *> *buttons, UITabBarController *controller) {
+    NSUInteger selectedIndex = [buttons indexOfObjectPassingTest:^BOOL(AWENormalModeTabBarButton *button, NSUInteger index, BOOL *stop) {
+      return button.status == 2;
+    }];
+    if (selectedIndex != NSNotFound) {
+        return selectedIndex;
+    }
+    return controller.selectedIndex < buttons.count ? controller.selectedIndex : 0;
+}
+
+static DYYYInstagramTabBarView *DYYYInstagramTabBarViewForTabBar(AWENormalModeTabBar *tabBar) {
+    return objc_getAssociatedObject(tabBar, &kDYYYInstagramTabBarViewKey);
+}
+
+static void DYYYSyncInstagramTabBarSelection(AWENormalModeTabBar *tabBar, NSArray<AWENormalModeTabBarButton *> *buttons, UITabBarController *controller, BOOL animated) {
+    DYYYInstagramTabBarView *instagramTabBar = DYYYInstagramTabBarViewForTabBar(tabBar);
+    if (!instagramTabBar || buttons.count == 0) {
+        return;
+    }
+    [instagramTabBar setSelectedIndex:DYYYNativeSelectedButtonIndex(buttons, controller) animated:animated];
+}
+
+static BOOL DYYYConfigureInstagramTabBar(AWENormalModeTabBar *tabBar, NSArray<AWENormalModeTabBarButton *> *buttons, UITabBarController *controller) {
+    NSMutableArray<UIImage *> *normalImages = [NSMutableArray arrayWithCapacity:buttons.count];
+    NSMutableArray<UIImage *> *selectedImages = [NSMutableArray arrayWithCapacity:buttons.count];
+    NSMutableArray<NSString *> *accessibilityLabels = [NSMutableArray arrayWithCapacity:buttons.count];
+    for (AWENormalModeTabBarButton *button in buttons) {
+        NSString *sourceTitle = objc_getAssociatedObject(button, &kDYYYNativeTabSourceTitleKey);
+        if (sourceTitle.length == 0) {
+            sourceTitle = button.accessibilityLabel;
+        }
+        DYYYNativeTabIconKind iconKind = DYYYNativeTabIconKindForTitle(sourceTitle);
+        UIImage *normalImage = DYYYNativeTabIcon(iconKind, NO);
+        UIImage *selectedImage = DYYYNativeTabIcon(iconKind, YES);
+        if (!normalImage || !selectedImage) {
+            return NO;
+        }
+        [normalImages addObject:normalImage];
+        [selectedImages addObject:selectedImage];
+        [accessibilityLabels addObject:DYYYNativeTabDisplayTitle(button, sourceTitle) ?: sourceTitle];
+    }
+
+    DYYYInstagramTabBarView *instagramTabBar = DYYYInstagramTabBarViewForTabBar(tabBar);
+    if (!instagramTabBar) {
+        instagramTabBar = [[DYYYInstagramTabBarView alloc] initWithFrame:tabBar.bounds];
+        instagramTabBar.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+        objc_setAssociatedObject(tabBar, &kDYYYInstagramTabBarViewKey, instagramTabBar, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        [tabBar addSubview:instagramTabBar];
+    }
+
+    instagramTabBar.overrideUserInterfaceStyle = DYYYNativeTabDesiredStyle();
+    [instagramTabBar refreshAppearance];
+    [instagramTabBar configureWithNormalImages:normalImages
+                                selectedImages:selectedImages
+                           accessibilityLabels:accessibilityLabels
+                                 selectedIndex:DYYYNativeSelectedButtonIndex(buttons, controller)];
+
+    __weak AWENormalModeTabBar *weakTabBar = tabBar;
+    NSArray<AWENormalModeTabBarButton *> *buttonSnapshot = [buttons copy];
+    instagramTabBar.selectionHandler = ^(NSUInteger index) {
+      AWENormalModeTabBar *strongTabBar = weakTabBar;
+      if (!strongTabBar || index >= buttonSnapshot.count) {
+          return;
+      }
+      AWENormalModeTabBarButton *button = buttonSnapshot[index];
+      [button onTouchUpInside:button.singleTapGes];
+      dispatch_async(dispatch_get_main_queue(), ^{
+        AWENormalModeTabBar *currentTabBar = weakTabBar;
+        if (currentTabBar) {
+            DYYYSyncInstagramTabBarSelection(currentTabBar, buttonSnapshot, DYYYNativeTabBarController(currentTabBar), YES);
+        }
+      });
+    };
+    return YES;
+}
+
 static void DYYYSetNativeTabOriginalButtonCovered(AWENormalModeTabBarButton *button, BOOL covered) {
     if (!button) {
         return;
@@ -10941,6 +11047,10 @@ static void DYYYRestoreNativeSystemTabBar(AWENormalModeTabBar *tabBar) {
         }
     }
 
+    DYYYInstagramTabBarView *instagramTabBar = DYYYInstagramTabBarViewForTabBar(tabBar);
+    [instagramTabBar removeFromSuperview];
+    objc_setAssociatedObject(tabBar, &kDYYYInstagramTabBarViewKey, nil, OBJC_ASSOCIATION_ASSIGN);
+
     UITabBarAppearance *originalAppearance = objc_getAssociatedObject(tabBar, &kDYYYNativeTabOriginalStandardAppearanceKey);
     if (originalAppearance) {
         tabBar.standardAppearance = originalAppearance;
@@ -10959,11 +11069,21 @@ static void DYYYRestoreNativeSystemTabBar(AWENormalModeTabBar *tabBar) {
     if (originalUnselectedTintColor) {
         tabBar.unselectedItemTintColor = originalUnselectedTintColor == NSNull.null ? nil : originalUnselectedTintColor;
     }
+    NSNumber *originalOverrideStyle = objc_getAssociatedObject(tabBar, &kDYYYNativeTabOriginalOverrideStyleKey);
+    if (originalOverrideStyle) {
+        tabBar.overrideUserInterfaceStyle = (UIUserInterfaceStyle)originalOverrideStyle.integerValue;
+    }
+    NSNumber *originalTranslucent = objc_getAssociatedObject(tabBar, &kDYYYNativeTabOriginalTranslucentKey);
+    if (originalTranslucent) {
+        tabBar.translucent = originalTranslucent.boolValue;
+    }
 
     objc_setAssociatedObject(tabBar, &kDYYYNativeTabOriginalStandardAppearanceKey, nil, OBJC_ASSOCIATION_ASSIGN);
     objc_setAssociatedObject(tabBar, &kDYYYNativeTabOriginalScrollEdgeAppearanceKey, nil, OBJC_ASSOCIATION_ASSIGN);
     objc_setAssociatedObject(tabBar, &kDYYYNativeTabOriginalTintColorKey, nil, OBJC_ASSOCIATION_ASSIGN);
     objc_setAssociatedObject(tabBar, &kDYYYNativeTabOriginalUnselectedTintColorKey, nil, OBJC_ASSOCIATION_ASSIGN);
+    objc_setAssociatedObject(tabBar, &kDYYYNativeTabOriginalOverrideStyleKey, nil, OBJC_ASSOCIATION_ASSIGN);
+    objc_setAssociatedObject(tabBar, &kDYYYNativeTabOriginalTranslucentKey, nil, OBJC_ASSOCIATION_ASSIGN);
     objc_setAssociatedObject(tabBar, &kDYYYNativeTabOriginalItemsKey, nil, OBJC_ASSOCIATION_ASSIGN);
     objc_setAssociatedObject(tabBar, &kDYYYNativeTabButtonSignatureKey, nil, OBJC_ASSOCIATION_ASSIGN);
     objc_setAssociatedObject(tabBar, &kDYYYNativeTabControllerSignatureKey, nil, OBJC_ASSOCIATION_ASSIGN);
@@ -10975,6 +11095,13 @@ static void DYYYRestoreNativeSystemTabBar(AWENormalModeTabBar *tabBar) {
     DYYYSetNativeTabViewHidden(tabBar.separatorLine, NO);
     for (AWENormalModeTabBarButton *button in DYYYNativeTabButtons(tabBar)) {
         DYYYSetNativeTabOriginalButtonCovered(button, NO);
+    }
+    Class systemButtonClass = NSClassFromString(@"UITabBarButton");
+    Class systemBackgroundClass = NSClassFromString(@"_UIBarBackground");
+    for (UIView *subview in tabBar.subviews) {
+        if ((systemButtonClass && [subview isKindOfClass:systemButtonClass]) || (systemBackgroundClass && [subview isKindOfClass:systemBackgroundClass])) {
+            DYYYSetNativeTabViewHidden(subview, NO);
+        }
     }
     objc_setAssociatedObject(tabBar, &kDYYYNativeTabMutationKey, nil, OBJC_ASSOCIATION_ASSIGN);
     [tabBar setNeedsLayout];
@@ -10992,24 +11119,45 @@ static void DYYYApplyNativeSystemTabBarChrome(AWENormalModeTabBar *tabBar, NSArr
 
     Class systemButtonClass = NSClassFromString(@"UITabBarButton");
     Class systemBackgroundClass = NSClassFromString(@"_UIBarBackground");
+    DYYYInstagramTabBarView *instagramTabBar = DYYYInstagramTabBarViewForTabBar(tabBar);
     for (UIView *subview in tabBar.subviews) {
-        if ((systemButtonClass && [subview isKindOfClass:systemButtonClass]) || (systemBackgroundClass && [subview isKindOfClass:systemBackgroundClass])) {
-            subview.hidden = NO;
-            subview.userInteractionEnabled = YES;
+        if (subview == instagramTabBar) {
+            continue;
         }
+        if ((systemButtonClass && [subview isKindOfClass:systemButtonClass]) || (systemBackgroundClass && [subview isKindOfClass:systemBackgroundClass])) {
+            DYYYSetNativeTabViewHidden(subview, YES);
+        }
+    }
+    if (instagramTabBar) {
+        instagramTabBar.frame = tabBar.bounds;
+        instagramTabBar.hidden = NO;
+        [tabBar bringSubviewToFront:instagramTabBar];
     }
 }
 
-static void DYYYSetNativeTabTitleFont(UITabBarItemStateAppearance *stateAppearance, UIFont *font) {
-    NSMutableDictionary<NSAttributedStringKey, id> *attributes = [stateAppearance.titleTextAttributes mutableCopy] ?: [NSMutableDictionary dictionary];
-    attributes[NSFontAttributeName] = font;
-    stateAppearance.titleTextAttributes = attributes;
+static UIUserInterfaceStyle DYYYNativeTabDesiredStyle(void) {
+    return [DYYYUtils isDarkMode] ? UIUserInterfaceStyleDark : UIUserInterfaceStyleLight;
 }
 
-static void DYYYConfigureNativeTabItemAppearance(UITabBarItemAppearance *itemAppearance) {
-    UIFont *font = [UIFont systemFontOfSize:14.0 weight:UIFontWeightMedium];
-    DYYYSetNativeTabTitleFont(itemAppearance.normal, font);
-    DYYYSetNativeTabTitleFont(itemAppearance.selected, font);
+static void DYYYApplyNativeSystemTabBarAppearance(AWENormalModeTabBar *tabBar) {
+    if (!tabBar) {
+        return;
+    }
+
+    UIUserInterfaceStyle desiredStyle = DYYYNativeTabDesiredStyle();
+    if (tabBar.overrideUserInterfaceStyle != desiredStyle) {
+        tabBar.overrideUserInterfaceStyle = desiredStyle;
+    }
+
+    UITabBarAppearance *appearance = [[UITabBarAppearance alloc] init];
+    [appearance configureWithDefaultBackground];
+    tabBar.standardAppearance = appearance;
+    if (@available(iOS 15.0, *)) {
+        tabBar.scrollEdgeAppearance = appearance;
+    }
+    tabBar.translucent = YES;
+    tabBar.tintColor = UIColor.labelColor;
+    tabBar.unselectedItemTintColor = UIColor.secondaryLabelColor;
 }
 
 static void DYYYUpdateNativeSystemTabBar(AWENormalModeTabBar *tabBar) {
@@ -11060,7 +11208,7 @@ static void DYYYUpdateNativeSystemTabBar(AWENormalModeTabBar *tabBar) {
                              [controllerSignature isEqualToArray:objc_getAssociatedObject(tabBar, &kDYYYNativeTabControllerSignatureKey)] &&
                              [objc_getAssociatedObject(tabBar, &kDYYYNativeTabModeKey) unsignedIntegerValue] == mode;
 
-    if (controller.transitionCoordinator) {
+    if (controller.transitionCoordinator && DYYYNativeSystemTabBarActive(tabBar)) {
         DYYYNativeTabLogFailure(tabBar, @"等待当前页面转场结束后启用");
         if (![objc_getAssociatedObject(tabBar, &kDYYYNativeTabRetryScheduledKey) boolValue]) {
             objc_setAssociatedObject(tabBar, &kDYYYNativeTabRetryScheduledKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -11097,6 +11245,18 @@ static void DYYYUpdateNativeSystemTabBar(AWENormalModeTabBar *tabBar) {
         if (mode == DYYYNativeTabModeVisualFallback) {
             DYYYInstallNativeTabFallbackDelegate(tabBar);
         }
+        if (tabBar.overrideUserInterfaceStyle != DYYYNativeTabDesiredStyle()) {
+            DYYYApplyNativeSystemTabBarAppearance(tabBar);
+        }
+        DYYYInstagramTabBarView *instagramTabBar = DYYYInstagramTabBarViewForTabBar(tabBar);
+        if (!instagramTabBar && !DYYYConfigureInstagramTabBar(tabBar, visibleButtons, controller)) {
+            DYYYNativeTabLogFailure(tabBar, @"已回退：Instagram 底栏素材不完整");
+            DYYYRestoreNativeSystemTabBar(tabBar);
+            return;
+        }
+        instagramTabBar = DYYYInstagramTabBarViewForTabBar(tabBar);
+        instagramTabBar.overrideUserInterfaceStyle = DYYYNativeTabDesiredStyle();
+        DYYYSyncInstagramTabBarSelection(tabBar, visibleButtons, controller, NO);
         DYYYApplyNativeSystemTabBarChrome(tabBar, visibleButtons);
         return;
     }
@@ -11105,7 +11265,7 @@ static void DYYYUpdateNativeSystemTabBar(AWENormalModeTabBar *tabBar) {
     for (AWENormalModeTabBarButton *button in visibleButtons) {
         UITabBarItem *item = DYYYNativeTabItemForButton(button);
         if (!item) {
-            DYYYNativeTabLogFailure(tabBar, @"已回退：底栏按钮缺少可用文字标题");
+            DYYYNativeTabLogFailure(tabBar, @"已回退：存在无法映射的底栏入口");
             DYYYRestoreNativeSystemTabBar(tabBar);
             return;
         }
@@ -11119,18 +11279,9 @@ static void DYYYUpdateNativeSystemTabBar(AWENormalModeTabBar *tabBar) {
     }
     objc_setAssociatedObject(tabBar, &kDYYYNativeTabOriginalTintColorKey, tabBar.tintColor ?: NSNull.null, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     objc_setAssociatedObject(tabBar, &kDYYYNativeTabOriginalUnselectedTintColorKey, tabBar.unselectedItemTintColor ?: NSNull.null, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-
-    UITabBarAppearance *appearance = [[UITabBarAppearance alloc] init];
-    [appearance configureWithDefaultBackground];
-    DYYYConfigureNativeTabItemAppearance(appearance.stackedLayoutAppearance);
-    DYYYConfigureNativeTabItemAppearance(appearance.inlineLayoutAppearance);
-    DYYYConfigureNativeTabItemAppearance(appearance.compactInlineLayoutAppearance);
-    tabBar.standardAppearance = appearance;
-    if (@available(iOS 15.0, *)) {
-        tabBar.scrollEdgeAppearance = appearance;
-    }
-    tabBar.tintColor = UIColor.labelColor;
-    tabBar.unselectedItemTintColor = UIColor.secondaryLabelColor;
+    objc_setAssociatedObject(tabBar, &kDYYYNativeTabOriginalOverrideStyleKey, @(tabBar.overrideUserInterfaceStyle), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(tabBar, &kDYYYNativeTabOriginalTranslucentKey, @(tabBar.isTranslucent), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    DYYYApplyNativeSystemTabBarAppearance(tabBar);
 
     objc_setAssociatedObject(tabBar, &kDYYYNativeTabMutationKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     objc_setAssociatedObject(tabBar, &kDYYYNativeTabActiveKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
@@ -11155,10 +11306,16 @@ static void DYYYUpdateNativeSystemTabBar(AWENormalModeTabBar *tabBar) {
     }
     objc_setAssociatedObject(tabBar, &kDYYYNativeTabMutationKey, nil, OBJC_ASSOCIATION_ASSIGN);
 
+    if (!DYYYConfigureInstagramTabBar(tabBar, visibleButtons, controller)) {
+        DYYYNativeTabLogFailure(tabBar, @"已回退：Instagram 底栏素材不完整");
+        DYYYRestoreNativeSystemTabBar(tabBar);
+        return;
+    }
+
     DYYYApplyNativeSystemTabBarChrome(tabBar, visibleButtons);
     objc_setAssociatedObject(tabBar, &kDYYYNativeTabLastFailureKey, nil, OBJC_ASSOCIATION_ASSIGN);
     NSString *modeName = mode == DYYYNativeTabModeControllerManaged ? @"控制器管理" : @"兼容模式";
-    NSString *status = [NSString stringWithFormat:@"已启用：%lu 个系统文字标签（%@）", (unsigned long)items.count, modeName];
+    NSString *status = [NSString stringWithFormat:@"已启用：%lu 个 Instagram Liquid Glass 图标（%@）", (unsigned long)items.count, modeName];
     [[NSUserDefaults standardUserDefaults] setObject:status forKey:kDYYYNativeTabRuntimeStatusKey];
     NSLog(@"[DYYY][SystemTabBar] %@", status);
     [tabBar setNeedsLayout];
@@ -11168,6 +11325,33 @@ static BOOL DYYYNativeSystemTabBarActiveForButton(AWENormalModeTabBarButton *but
     AWENormalModeTabBar *tabBar = DYYYNativeTabBarForButton(button);
     return tabBar && DYYYNativeSystemTabBarActive(tabBar);
 }
+
+static void DYYYSyncInstagramTabBarSelectionForButton(AWENormalModeTabBarButton *button) {
+    if (button.status != 2) {
+        return;
+    }
+    AWENormalModeTabBar *tabBar = DYYYNativeTabBarForButton(button);
+    if (!DYYYNativeSystemTabBarActive(tabBar)) {
+        return;
+    }
+
+    NSMutableArray<AWENormalModeTabBarButton *> *visibleButtons = [NSMutableArray array];
+    for (AWENormalModeTabBarButton *candidate in DYYYNativeTabButtons(tabBar)) {
+        if (!candidate.hidden && !DYYYNativeTabIsActionButton(candidate)) {
+            [visibleButtons addObject:candidate];
+        }
+    }
+    DYYYSyncInstagramTabBarSelection(tabBar, visibleButtons, DYYYNativeTabBarController(tabBar), YES);
+}
+
+%hook AWENormalModeTabBarButton
+
+- (void)setStatus:(NSInteger)status {
+    %orig;
+    DYYYSyncInstagramTabBarSelectionForButton(self);
+}
+
+%end
 
 // 底栏高度
 %hook AWENormalModeTabBarPlusButton
@@ -11254,7 +11438,19 @@ static Class tabBarButtonClass = nil;
     %orig;
     if (self.window) {
         [self initializeOriginalTabBarHeight];
+        DYYYUpdateNativeSystemTabBar(self);
     }
+}
+
+- (void)setTabBarButtons:(NSArray *)buttons {
+    %orig;
+    __weak AWENormalModeTabBar *weakTabBar = self;
+    dispatch_async(dispatch_get_main_queue(), ^{
+      AWENormalModeTabBar *strongTabBar = weakTabBar;
+      if (strongTabBar.window) {
+          DYYYUpdateNativeSystemTabBar(strongTabBar);
+      }
+    });
 }
 
 - (void)updateTabBarButtons:(NSArray *)buttons animated:(BOOL)animated {
@@ -11490,6 +11686,19 @@ static Class tabBarButtonClass = nil;
     DYYYUpdateNativeSystemTabBar(self.awe_tabBar);
 }
 
+- (void)didThemeChanged:(BOOL)changed {
+    %orig;
+    AWENormalModeTabBar *tabBar = self.awe_tabBar;
+    if (DYYYNativeSystemTabBarActive(tabBar)) {
+        DYYYApplyNativeSystemTabBarAppearance(tabBar);
+        DYYYInstagramTabBarView *instagramTabBar = DYYYInstagramTabBarViewForTabBar(tabBar);
+        instagramTabBar.overrideUserInterfaceStyle = DYYYNativeTabDesiredStyle();
+        [instagramTabBar refreshAppearance];
+        DYYYApplyNativeSystemTabBarChrome(tabBar, DYYYNativeTabButtons(tabBar));
+        [tabBar setNeedsLayout];
+    }
+}
+
 %end
 
 // 精简平板底栏
@@ -11536,6 +11745,11 @@ static Class tabBarButtonClass = nil;
 
 // 禁用点击首页刷新
 %hook AWENormalModeTabBarGeneralButton
+
+- (void)setStatus:(NSInteger)status {
+    %orig;
+    DYYYSyncInstagramTabBarSelectionForButton(self);
+}
 
 - (void)layoutSubviews {
     %orig;
