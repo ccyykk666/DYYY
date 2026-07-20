@@ -12,13 +12,8 @@ static const CGFloat kDYYYInstagramRubberBandCoefficient = 0.55;
 static const NSTimeInterval kDYYYInstagramIndicatorAnimationDuration = 0.35;
 static const CGFloat kDYYYInstagramIndicatorSpringDamping = 0.78;
 
-static UIColor *DYYYInstagramGlassTintColor(void) {
-    return [UIColor colorWithDynamicProvider:^UIColor *(UITraitCollection *traitCollection) {
-      if (traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark) {
-          return [UIColor.blackColor colorWithAlphaComponent:0.65];
-      }
-      return [UIColor.whiteColor colorWithAlphaComponent:0.80];
-    }];
+static UIColor *DYYYInstagramGlassTintColor(BOOL darkAppearance) {
+    return darkAppearance ? [UIColor.blackColor colorWithAlphaComponent:0.65] : [UIColor.whiteColor colorWithAlphaComponent:0.80];
 }
 
 static UIVisualEffect *DYYYInstagramGlassEffect(UIColor *tintColor) {
@@ -53,17 +48,17 @@ static CGFloat DYYYInstagramRubberBandedOffset(CGFloat offset) {
     return copysign(magnitude, offset);
 }
 
-@interface DYYYInstagramTabBarView ()
+@interface DYYYInstagramTabBarView () <UIGestureRecognizerDelegate>
 
 @property(nonatomic, strong) UIView *shadowView;
 @property(nonatomic, strong) UIVisualEffectView *glassView;
 @property(nonatomic, strong) UIVisualEffectView *indicatorView;
-@property(nonatomic, strong) UIVisualEffect *cachedGlassEffect;
 @property(nonatomic, strong) NSMutableArray<UIButton *> *buttons;
 @property(nonatomic, strong) UIPanGestureRecognizer *panGestureRecognizer;
 @property(nonatomic, strong) UISelectionFeedbackGenerator *feedbackGenerator;
 @property(nonatomic, assign, readwrite) NSUInteger selectedIndex;
 @property(nonatomic, assign) CGFloat lastPanVelocityX;
+@property(nonatomic, assign) NSUInteger panStartIndex;
 
 @end
 
@@ -101,8 +96,11 @@ static CGFloat DYYYInstagramRubberBandedOffset(CGFloat offset) {
 
     _buttons = [NSMutableArray arrayWithCapacity:5];
     _selectedIndex = NSNotFound;
+    _panStartIndex = NSNotFound;
+    _darkAppearance = UIScreen.mainScreen.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark;
 
     _panGestureRecognizer = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handlePanGesture:)];
+    _panGestureRecognizer.delegate = self;
     _panGestureRecognizer.maximumNumberOfTouches = 1;
     _panGestureRecognizer.cancelsTouchesInView = YES;
     [_glassView.contentView addGestureRecognizer:_panGestureRecognizer];
@@ -112,23 +110,16 @@ static CGFloat DYYYInstagramRubberBandedOffset(CGFloat offset) {
 }
 
 - (void)refreshAppearance {
-    UIColor *glassTintColor = DYYYInstagramGlassTintColor();
-    if (!self.cachedGlassEffect || ![self.cachedGlassEffect respondsToSelector:NSSelectorFromString(@"setInteractive:")]) {
-        self.cachedGlassEffect = DYYYInstagramGlassEffect(glassTintColor);
-    } else {
-        SEL tintSelector = NSSelectorFromString(@"setTintColor:");
-        if ([self.cachedGlassEffect respondsToSelector:tintSelector]) {
-            ((void (*)(id, SEL, id))objc_msgSend)(self.cachedGlassEffect, tintSelector, glassTintColor);
-        }
-    }
-    self.glassView.effect = self.cachedGlassEffect;
+    UIColor *glassTintColor = DYYYInstagramGlassTintColor(self.isDarkAppearance);
+    // Replacing the effect is intentional: UIVisualEffectView does not always
+    // redraw when a UIGlassEffect instance is mutated in place during a theme switch.
+    self.glassView.effect = DYYYInstagramGlassEffect(glassTintColor);
 
-    BOOL dark = self.traitCollection.userInterfaceStyle == UIUserInterfaceStyleDark;
-    UIBlurEffectStyle indicatorStyle = dark ? UIBlurEffectStyleSystemUltraThinMaterialLight : UIBlurEffectStyleSystemUltraThinMaterialDark;
+    UIBlurEffectStyle indicatorStyle = self.isDarkAppearance ? UIBlurEffectStyleSystemUltraThinMaterialLight : UIBlurEffectStyleSystemUltraThinMaterialDark;
     self.indicatorView.effect = [UIBlurEffect effectWithStyle:indicatorStyle];
-    self.indicatorView.alpha = dark ? 0.60 : 0.38;
+    self.indicatorView.alpha = self.isDarkAppearance ? 0.60 : 0.38;
 
-    UIColor *tintColor = UIColor.labelColor;
+    UIColor *tintColor = self.isDarkAppearance ? UIColor.whiteColor : UIColor.blackColor;
     for (UIButton *button in self.buttons) {
         button.tintColor = tintColor;
     }
@@ -139,6 +130,14 @@ static CGFloat DYYYInstagramRubberBandedOffset(CGFloat offset) {
     if (!previousTraitCollection || [self.traitCollection hasDifferentColorAppearanceComparedToTraitCollection:previousTraitCollection]) {
         [self refreshAppearance];
     }
+}
+
+- (void)setDarkAppearance:(BOOL)darkAppearance {
+    if (_darkAppearance == darkAppearance) {
+        return;
+    }
+    _darkAppearance = darkAppearance;
+    [self refreshAppearance];
 }
 
 - (void)configureWithNormalImages:(NSArray<UIImage *> *)normalImages
@@ -280,6 +279,14 @@ static CGFloat DYYYInstagramRubberBandedOffset(CGFloat offset) {
     }
 }
 
+- (BOOL)gestureRecognizerShouldBegin:(UIGestureRecognizer *)gestureRecognizer {
+    if (gestureRecognizer != self.panGestureRecognizer || self.buttons.count < 2) {
+        return NO;
+    }
+    CGPoint velocity = [(UIPanGestureRecognizer *)gestureRecognizer velocityInView:self.glassView.contentView];
+    return fabs(velocity.x) > fabs(velocity.y);
+}
+
 - (void)handlePanGesture:(UIPanGestureRecognizer *)gestureRecognizer {
     if (self.buttons.count < 2) {
         return;
@@ -288,6 +295,7 @@ static CGFloat DYYYInstagramRubberBandedOffset(CGFloat offset) {
     switch (gestureRecognizer.state) {
         case UIGestureRecognizerStateBegan:
             [self.indicatorView.layer removeAllAnimations];
+            self.panStartIndex = self.selectedIndex;
             self.feedbackGenerator = [[UISelectionFeedbackGenerator alloc] init];
             [self.feedbackGenerator prepare];
             break;
@@ -321,19 +329,34 @@ static CGFloat DYYYInstagramRubberBandedOffset(CGFloat offset) {
                 [self updateButtonSelection];
                 [self.feedbackGenerator selectionChanged];
                 [self.feedbackGenerator prepare];
-                if (self.selectionHandler) {
-                    self.selectionHandler(nearestIndex);
-                }
             }
             break;
         }
 
-        case UIGestureRecognizerStateEnded:
-        case UIGestureRecognizerStateCancelled:
-        case UIGestureRecognizerStateFailed:
+        case UIGestureRecognizerStateEnded: {
+            NSUInteger selectedIndex = self.selectedIndex;
+            NSUInteger startIndex = self.panStartIndex;
             self.feedbackGenerator = nil;
+            self.panStartIndex = NSNotFound;
+            [self setSelectedIndex:selectedIndex animated:YES];
+            if (selectedIndex != startIndex && self.selectionHandler) {
+                self.selectionHandler(selectedIndex);
+            }
+            break;
+        }
+
+        case UIGestureRecognizerStateCancelled:
+        case UIGestureRecognizerStateFailed: {
+            NSUInteger startIndex = self.panStartIndex;
+            self.feedbackGenerator = nil;
+            self.panStartIndex = NSNotFound;
+            if (startIndex < self.buttons.count) {
+                _selectedIndex = startIndex;
+                [self updateButtonSelection];
+            }
             [self setSelectedIndex:self.selectedIndex animated:YES];
             break;
+        }
 
         default:
             break;

@@ -4,6 +4,7 @@
 
 @property(nonatomic, copy) void (^selectionHandler)(NSUInteger index);
 @property(nonatomic, assign, readonly) NSUInteger selectedIndex;
+@property(nonatomic, assign, getter=isDarkAppearance) BOOL darkAppearance;
 
 - (void)configureWithNormalImages:(NSArray<UIImage *> *)normalImages
                    selectedImages:(NSArray<UIImage *> *)selectedImages

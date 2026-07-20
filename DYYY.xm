@@ -54,6 +54,9 @@ static const CGFloat kInvalidHeight = -1.0;
 static CGFloat gGlobalTransparency = kInvalidAlpha;
 static CGFloat gCurrentTabBarHeight = kInvalidHeight;
 static CGFloat originalTabBarHeight = kInvalidHeight;
+static __weak AWENormalModeTabBar *gDYYYActiveInstagramTabBar = nil;
+static BOOL DYYYShouldExtendFeedBehindSystemTabBar(void);
+static BOOL DYYYNativeSystemTabBarActive(AWENormalModeTabBar *tabBar);
 static NSString *const kDYYYGlobalTransparencyKey = @"DYYYGlobalTransparency";
 static NSString *const kDYYYGlobalTransparencyDidChangeNotification = @"DYYYGlobalTransparencyDidChangeNotification";
 static char kDYYYGlobalTransparencyBaseAlphaKey;
@@ -1971,6 +1974,13 @@ static void DYYYDisableAVPlayerItemHDRMetadata(AVPlayerItem *item) {
     return %orig;
 }
 
++ (BOOL)enableAllScreenAdaption {
+    if (DYYYShouldExtendFeedBehindSystemTabBar()) {
+        return YES;
+    }
+    return %orig;
+}
+
 %end
 
 %hook AWEFeedABTestServiceObjc
@@ -2064,6 +2074,13 @@ static void DYYYDisableAVPlayerItemHDRMetadata(AVPlayerItem *item) {
     %orig(DYYYShouldDisableAllHDR() ? NO : enableHDR);
 }
 
+- (BOOL)isFitOptimize {
+    if (DYYYShouldExtendFeedBehindSystemTabBar()) {
+        return YES;
+    }
+    return %orig;
+}
+
 %end
 
 %hook AWEPlayVideoPlayerContext
@@ -2098,6 +2115,20 @@ static void DYYYDisableAVPlayerItemHDRMetadata(AVPlayerItem *item) {
 
 %hook AWEPlayVideoViewController
 
++ (NSInteger)contentModeForVideo:(id)video {
+    if (DYYYShouldExtendFeedBehindSystemTabBar()) {
+        return UIViewContentModeScaleAspectFit;
+    }
+    return %orig;
+}
+
+- (NSInteger)scaleModeForVideo {
+    if (DYYYShouldExtendFeedBehindSystemTabBar()) {
+        return UIViewContentModeScaleAspectFit;
+    }
+    return %orig;
+}
+
 - (BOOL)enableHDR {
     if (DYYYShouldDisableAllHDR()) {
         return NO;
@@ -2118,6 +2149,49 @@ static void DYYYDisableAVPlayerItemHDRMetadata(AVPlayerItem *item) {
 
 - (void)setPlayerLutFilter:(id)lutFilter HDRLutImage:(id)HDRLutImage {
     %orig(lutFilter, DYYYShouldDisableAllHDR() ? nil : HDRLutImage);
+}
+
+- (BOOL)isFitOptimize {
+    if (DYYYShouldExtendFeedBehindSystemTabBar()) {
+        return YES;
+    }
+    return %orig;
+}
+
+- (BOOL)enableDynamicGaussianBlurAfterProcess {
+    if (DYYYShouldExtendFeedBehindSystemTabBar()) {
+        return YES;
+    }
+    return %orig;
+}
+
+%end
+
+%hook AWEAllScreenAdaptationManager
+
++ (NSUInteger)allScreenCropOptimizeStyleWithModel:(id)model {
+    if (DYYYShouldExtendFeedBehindSystemTabBar()) {
+        return 2;
+    }
+    return %orig;
+}
+
+%end
+
+%hook AWEDPlayerVideoDisplayContainer
+
+- (BOOL)enableDynamicGaussianBlurAfterProcess {
+    if (DYYYShouldExtendFeedBehindSystemTabBar()) {
+        return YES;
+    }
+    return %orig;
+}
+
+- (NSInteger)customScaleModeForVideo {
+    if (DYYYShouldExtendFeedBehindSystemTabBar()) {
+        return UIViewContentModeScaleAspectFit;
+    }
+    return %orig;
 }
 
 %end
@@ -4678,6 +4752,13 @@ static NSArray<NSString *> *dyyy_qualityRank = nil;
 
 - (BOOL)getFeedIphoneAutoPlayState {
     return YES;
+}
+
+- (NSInteger)contentModeForVideo:(id)video {
+    if (DYYYShouldExtendFeedBehindSystemTabBar()) {
+        return UIViewContentModeScaleAspectFit;
+    }
+    return %orig;
 }
 %end
 
@@ -10617,6 +10698,27 @@ static BOOL DYYYUseSystemTabBarEnabled(void) {
     return DYYYGetBool(@"DYYYUseSystemTabBar") && UI_USER_INTERFACE_IDIOM() == UIUserInterfaceIdiomPhone;
 }
 
+static BOOL DYYYShouldExtendFeedBehindSystemTabBar(void) {
+    AWENormalModeTabBar *tabBar = gDYYYActiveInstagramTabBar;
+    return DYYYUseSystemTabBarEnabled() && tabBar && tabBar.window && !tabBar.hidden && DYYYNativeSystemTabBarActive(tabBar);
+}
+
+static void DYYYRequestFeedRelayoutForSystemTabBar(AWENormalModeTabBar *tabBar) {
+    UIView *rootView = tabBar.window.rootViewController.view;
+    if (!rootView) {
+        return;
+    }
+
+    [rootView setNeedsLayout];
+    dispatch_async(dispatch_get_main_queue(), ^{
+      if (!rootView.window) {
+          return;
+      }
+      [rootView setNeedsLayout];
+      [rootView layoutIfNeeded];
+    });
+}
+
 static void DYYYSetNativeTabViewHidden(UIView *view, BOOL hidden) {
     if (!view) {
         return;
@@ -10852,6 +10954,7 @@ static BOOL DYYYConfigureInstagramTabBar(AWENormalModeTabBar *tabBar, NSArray<AW
         [tabBar addSubview:instagramTabBar];
     }
 
+    instagramTabBar.darkAppearance = [DYYYUtils isDarkMode];
     [instagramTabBar refreshAppearance];
     [instagramTabBar configureWithNormalImages:normalImages
                                 selectedImages:selectedImages
@@ -10917,6 +11020,9 @@ static void DYYYRestoreNativeSystemTabBar(AWENormalModeTabBar *tabBar) {
 
     objc_setAssociatedObject(tabBar, &kDYYYNativeTabMutationKey, @YES, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     objc_setAssociatedObject(tabBar, &kDYYYNativeTabActiveKey, nil, OBJC_ASSOCIATION_ASSIGN);
+    if (gDYYYActiveInstagramTabBar == tabBar) {
+        gDYYYActiveInstagramTabBar = nil;
+    }
 
     DYYYInstagramTabBarView *instagramTabBar = DYYYInstagramTabBarViewForTabBar(tabBar);
     [instagramTabBar removeFromSuperview];
@@ -10943,6 +11049,7 @@ static void DYYYRestoreNativeSystemTabBar(AWENormalModeTabBar *tabBar) {
     objc_setAssociatedObject(tabBar, &kDYYYNativeTabButtonSignatureKey, nil, OBJC_ASSOCIATION_ASSIGN);
     objc_setAssociatedObject(tabBar, &kDYYYNativeTabMutationKey, nil, OBJC_ASSOCIATION_ASSIGN);
     [tabBar setNeedsLayout];
+    DYYYRequestFeedRelayoutForSystemTabBar(tabBar);
 }
 
 static void DYYYApplyNativeSystemTabBarChrome(AWENormalModeTabBar *tabBar, NSArray<AWENormalModeTabBarButton *> *buttons) {
@@ -10969,6 +11076,7 @@ static void DYYYApplyNativeSystemTabBarChrome(AWENormalModeTabBar *tabBar, NSArr
     }
 
     if (instagramTabBar) {
+        instagramTabBar.darkAppearance = [DYYYUtils isDarkMode];
         instagramTabBar.frame = tabBar.bounds;
         instagramTabBar.hidden = NO;
         [tabBar bringSubviewToFront:instagramTabBar];
@@ -11025,10 +11133,14 @@ static void DYYYUpdateNativeSystemTabBar(AWENormalModeTabBar *tabBar) {
             return;
         }
 
+        gDYYYActiveInstagramTabBar = tabBar;
+        DYYYRequestFeedRelayoutForSystemTabBar(tabBar);
+
         NSString *status = [NSString stringWithFormat:@"已启用：%lu 个 Instagram Liquid Glass 图标", (unsigned long)visibleButtons.count];
         [[NSUserDefaults standardUserDefaults] setObject:status forKey:kDYYYNativeTabRuntimeStatusKey];
         NSLog(@"[DYYY][SystemTabBar] %@", status);
     } else {
+        gDYYYActiveInstagramTabBar = tabBar;
         DYYYSyncInstagramTabBarSelection(tabBar, visibleButtons, controller, NO);
     }
 
@@ -11415,6 +11527,7 @@ static Class tabBarButtonClass = nil;
     AWENormalModeTabBar *tabBar = self.awe_tabBar;
     if (DYYYNativeSystemTabBarActive(tabBar)) {
         DYYYInstagramTabBarView *instagramTabBar = DYYYInstagramTabBarViewForTabBar(tabBar);
+        instagramTabBar.darkAppearance = [DYYYUtils isDarkMode];
         [instagramTabBar refreshAppearance];
         DYYYApplyNativeSystemTabBarChrome(tabBar, DYYYNativeTabButtons(tabBar));
         [tabBar setNeedsLayout];
@@ -11945,6 +12058,8 @@ static Class tabBarButtonClass = nil;
         return;
     }
 
+    // Keep the Instagram tab-bar path out of this global UIView hot path.
+    // Its feed/player-specific layout hooks below perform the same extension.
     BOOL enableFS = DYYYGetBool(@"DYYYEnableFullScreen");
     if (!enableFS) {
         %orig(frame);
@@ -12252,6 +12367,20 @@ static Class tabBarButtonClass = nil;
 
 %hook AWEDPlayerFeedPlayerViewController
 
++ (NSInteger)contentModeForVideo:(id)video {
+    if (DYYYShouldExtendFeedBehindSystemTabBar()) {
+        return UIViewContentModeScaleAspectFit;
+    }
+    return %orig;
+}
+
+- (NSInteger)scaleModeForVideo {
+    if (DYYYShouldExtendFeedBehindSystemTabBar()) {
+        return UIViewContentModeScaleAspectFit;
+    }
+    return %orig;
+}
+
 - (BOOL)enableHDR {
     if (DYYYShouldDisableAllHDR()) {
         return NO;
@@ -12261,7 +12390,7 @@ static Class tabBarButtonClass = nil;
 
 - (void)viewDidLayoutSubviews {
     %orig;
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+    if (DYYYGetBool(@"DYYYEnableFullScreen") || DYYYShouldExtendFeedBehindSystemTabBar()) {
         UIView *contentView = self.contentView;
         if (contentView && contentView.superview) {
             CGRect frame = contentView.frame;
@@ -12301,6 +12430,20 @@ static Class tabBarButtonClass = nil;
 
 %hook AWEDPlayerViewController_Merge
 
++ (NSInteger)contentModeForVideo:(id)video {
+    if (DYYYShouldExtendFeedBehindSystemTabBar()) {
+        return UIViewContentModeScaleAspectFit;
+    }
+    return %orig;
+}
+
+- (NSInteger)scaleModeForVideo {
+    if (DYYYShouldExtendFeedBehindSystemTabBar()) {
+        return UIViewContentModeScaleAspectFit;
+    }
+    return %orig;
+}
+
 - (BOOL)enableHDR {
     if (DYYYShouldDisableAllHDR()) {
         return NO;
@@ -12310,7 +12453,7 @@ static Class tabBarButtonClass = nil;
 
 - (void)viewDidLayoutSubviews {
     %orig;
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+    if (DYYYGetBool(@"DYYYEnableFullScreen") || DYYYShouldExtendFeedBehindSystemTabBar()) {
         UIView *contentView = self.contentView;
         if (contentView && contentView.superview) {
             CGRect frame = contentView.frame;
@@ -12352,10 +12495,12 @@ static Class tabBarButtonClass = nil;
 - (void)layoutSubviews {
     %orig;
 
-    if (DYYYGetBool(@"DYYYEnableFullScreen")) {
+    if (DYYYGetBool(@"DYYYEnableFullScreen") || DYYYShouldExtendFeedBehindSystemTabBar()) {
         CGRect frame = self.frame;
         frame.size.height = self.superview.frame.size.height;
-        self.frame = frame;
+        if (fabs(CGRectGetHeight(self.frame) - CGRectGetHeight(frame)) >= 0.5) {
+            self.frame = frame;
+        }
     } else if (gCurrentTabBarHeight > 0) {
         UIWindow *keyWindow = [DYYYUtils getActiveWindow];
         if (keyWindow && keyWindow.safeAreaInsets.bottom == 0) {

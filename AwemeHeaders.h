@@ -230,9 +230,13 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 
 @interface AWEPlayVideoViewController : UIViewController
 @property(nonatomic, strong) AWEAwemeModel *model;
++ (NSInteger)contentModeForVideo:(id)video;
+- (NSInteger)scaleModeForVideo;
 - (BOOL)enableHDR;
 - (void)setEnableHDR:(BOOL)enableHDR;
 - (BOOL)awe_isCurrentVideoHDR;
+- (BOOL)isFitOptimize;
+- (BOOL)enableDynamicGaussianBlurAfterProcess;
 - (void)setPlayerLutFilter:(id)lutFilter HDRLutImage:(id)HDRLutImage;
 @end
 
@@ -1282,12 +1286,16 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 
 @interface AWEDPlayerFeedPlayerViewController : UIViewController
 @property(nonatomic) UIView *contentView;
++ (NSInteger)contentModeForVideo:(id)video;
+- (NSInteger)scaleModeForVideo;
 - (BOOL)enableHDR;
 - (void)setVideoControllerPlaybackRate:(double)arg0;
 @end
 
 @interface AWEDPlayerViewController_Merge : UIViewController
 @property(nonatomic) UIView *contentView;
++ (NSInteger)contentModeForVideo:(id)video;
+- (NSInteger)scaleModeForVideo;
 - (BOOL)enableHDR;
 - (void)setVideoControllerPlaybackRate:(double)arg0;
 @end
@@ -1616,6 +1624,7 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 + (BOOL)enableHDRBrightnessOpt;
 + (BOOL)enableHDRFullModelAdaptation;
 + (BOOL)hdrAutomaticIdentification;
++ (BOOL)enableAllScreenAdaption;
 @end
 
 @interface BDSimPlayerBizConfig : NSObject
@@ -1630,6 +1639,16 @@ typedef NS_ENUM(NSUInteger, DYEdgeMode) {
 @interface AWEDPlayerVideoDisplayOptState : NSObject
 - (BOOL)enableHDR;
 - (void)setEnableHDR:(BOOL)enableHDR;
+- (BOOL)isFitOptimize;
+@end
+
+@interface AWEAllScreenAdaptationManager : NSObject
++ (NSUInteger)allScreenCropOptimizeStyleWithModel:(id)model;
+@end
+
+@interface AWEDPlayerVideoDisplayContainer : NSObject
+- (BOOL)enableDynamicGaussianBlurAfterProcess;
+- (NSInteger)customScaleModeForVideo;
 @end
 
 @interface AWEPlayVideoPlayerContext : NSObject
