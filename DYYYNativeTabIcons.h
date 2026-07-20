@@ -8,4 +8,12 @@ typedef NS_ENUM(NSUInteger, DYYYNativeTabIconKind) {
     DYYYNativeTabIconKindUnknown = NSNotFound,
 };
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 UIImage *DYYYNativeTabIcon(DYYYNativeTabIconKind kind, BOOL selected);
+
+#ifdef __cplusplus
+}
+#endif
